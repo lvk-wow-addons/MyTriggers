@@ -36,7 +36,7 @@ SheepWhisperer_InRangeOfAoeSpells = {
 
     -- Mage
     ["8/1"] = "",
-    ["8/2"] = "",
+    ["8/2"] = "Fireball",
     ["8/3"] = "",
 
     -- Warlock
@@ -92,6 +92,29 @@ function MyTriggers_DefaultSettings()
     return settings
 end
 
+local aoeSelected = false
+local lastSpell = ""
+
+function MyTriggers_GetLastSpell()
+    return lastSpell
+end
+
+function MyTriggers_SetLastSpell(spell)
+    lastSpell = spell
+end
+
+function MyTriggers_IsAoeSelected()
+    return aoeSelected
+end
+
+function MyTriggers_IsSingleSelected()
+    return not aoeSelected
+end
+
+function MyTriggers_ToggleSelection()
+    aoeSelected = not aoeSelected
+end
+
 function MyTriggers_GetInRangeOfAoeSpell()
     local classDisplayName, class, classID = UnitClass("player");
     local spec = GetSpecialization()
@@ -104,7 +127,7 @@ function MyTriggers_Check(settings)
     MyTriggers_CheckPriorityTarget(settings)
     MyTriggers_CountForAoe(settings)
 
-    settings.isAoePriority = settings.isPriority or settings.isAoeReached
+    settings.isAoePriority = aoeSelected or settings.isPriority or settings.isAoeReached
     settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
 end
 

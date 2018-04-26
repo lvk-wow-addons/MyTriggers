@@ -1,4 +1,4 @@
-SheepWhisperer_InRangeOfAoeSpells = {
+MyTriggers_InRangeOfAoeSpells = {
     -- Warrior
     ["1/1"] = "",
     ["1/2"] = "",
@@ -120,7 +120,7 @@ function MyTriggers_GetInRangeOfAoeSpell()
     local spec = GetSpecialization()
 
     local key = tostring(classID) .. "/" .. tostring(spec)
-    return SheepWhisperer_InRangeOfAoeSpells[key]
+    return MyTriggers_InRangeOfAoeSpells[key]
 end
 
 function MyTriggers_Check(settings)
@@ -205,4 +205,77 @@ function MyTriggers_Test()
     else
         MyTriggers_DebugPrint("single target priority: NO");
     end
+end
+
+-- https://wago.io/r1wDoVIw-
+local frame = CreateFrame("FRAME", "MyTriggersAddonFrame");
+frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
+local MyTriggers_Warlock = {
+    pguid = UnitGUID("player"),
+    dreadstalkerCount = 0,
+    dreadstalkerTime = {},
+
+    impCount = 0,
+    impTime = {}
+}
+
+local function eventHandler(self, e, timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID, ...)
+    local now = GetTime()
+
+    if subEvent == "UNIT_DIED" then
+        for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
+            if destGUID == index then
+                MyTriggers_Warlock.dreadstalkerTime[index] = nil
+                MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1
+            end
+        end
+        for index, value in pairs(MyTriggers_Warlock.impTime) do
+            if destGUID == index then
+                MyTriggers_Warlock.impTime[index] = nil
+                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+            end
+        end
+    elseif subEvent == "SPELL_SUMMON" and sourceGUID == MyTriggers_Warlock.pguid then
+        if spellID == 193331 or spellID == 193332 then
+            MyTriggers_Warlock.dreadstalkerTime[destGUID] = now
+            MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount + 1
+        elseif spellID == 196273 or spellID == 196274 or spellID == 104317 or spellID == 196271 then
+            MyTriggers_Warlock.impTime[destGUID] = now
+            MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount + 1
+        end
+    elseif subEvent == "SPELL_INSTAKILL" then
+        for index, value in pairs(MyTriggers_Warlock.impTime) do
+            if destGUID == index then
+                MyTriggers_Warlock.impTime[index] = nil
+                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+            end
+        end
+    end
+end
+frame:SetScript("OnEvent", eventHandler);
+
+function MyTriggers_GetDreadstalkerCount()
+    local cutoff = GetTime() - 12
+    if MyTriggers_Warlock.dreadstalkerTime ~= nil then      
+        for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
+            if value < cutoff then
+                MyTriggers_Warlock.dreadstalkerTime[index] = nil
+                MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1               
+            end
+        end
+    end
+    return MyTriggers_Warlock.dreadstalkerCount or 0
+end
+
+function MyTriggers_GetImpCount()
+    local cutoff = GetTime() - 12
+    if MyTriggers_Warlock.impTime ~= nil then      
+        for index, value in pairs(MyTriggers_Warlock.impTime) do
+            if value < cutoff then
+                MyTriggers_Warlock.impTime[index] = nil
+                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+            end
+        end
+    end
+    return MyTriggers_Warlock.impCount or 0
 end

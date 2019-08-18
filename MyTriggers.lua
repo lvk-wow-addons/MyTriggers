@@ -81,7 +81,7 @@ function MyTriggers_DefaultSettings()
     settings.aoeEnemyThreshold = 5
     settings.priWorldBoss = true
     settings.priElite = true
-    settings.bossHealth = 15000000
+    settings.bossHealth = 15000
     settings.inRangeOfAoeSpell = MyTriggers_GetInRangeOfAoeSpell()
 
     settings.isPriority = false

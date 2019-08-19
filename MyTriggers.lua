@@ -92,7 +92,7 @@ function MyTriggers_DefaultSettings()
     return settings
 end
 
-local aoeSelected = false
+local priMode = 2
 local lastSpell = ""
 
 function MyTriggers_GetLastSpell()
@@ -104,15 +104,39 @@ function MyTriggers_SetLastSpell(spell)
 end
 
 function MyTriggers_IsAoeSelected()
-    return aoeSelected
+    return priMode == 1
 end
 
 function MyTriggers_IsSingleSelected()
-    return not aoeSelected
+    return priMode == 0
+end
+
+function MyTriggers_IsAutoSelection()
+    return priMode == 2
+end
+
+function MyTriggers_SetSelection(mode)
+    priMode = mode
+    MyTriggers_ShowMode()
 end
 
 function MyTriggers_ToggleSelection()
-    aoeSelected = not aoeSelected
+    if priMode < 2 then
+        priMode = priMode + 1
+    else
+        priMode = 0
+    end
+    MyTriggers_ShowMode()
+end
+
+function MyTriggers_ShowMode()
+    if priMode == 0 then
+        UIErrorsFrame:AddMessage("Single target mode selected", 1, 0, 0, 5)
+    elseif priMode == 1 then
+        UIErrorsFrame:AddMessage("AOE mode selected", 1, 0, 0, 5)
+    else
+        UIErrorsFrame:AddMessage("Automatic single target / aoe mode selected", 1, 0, 0, 5)
+    end
 end
 
 function MyTriggers_GetInRangeOfAoeSpell()
@@ -126,9 +150,20 @@ end
 function MyTriggers_Check(settings)
     MyTriggers_CheckPriorityTarget(settings)
     MyTriggers_CountForAoe(settings)
+    MyTriggers_CheckSelection(settings)
 
-    settings.isAoePriority = aoeSelected or settings.isPriority or settings.isAoeReached
+    settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
     settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
+end
+
+function MyTriggers_CheckSelection(settings)
+    if priMode == 0 then
+        settings.aoeSelected = false
+    elseif priMode == 1 then
+        settings.aoeSelected = true
+    else
+        settings.aoeSelected = settings.isAoeReached
+    end
 end
 
 function MyTriggers_CountForAoe(settings)
@@ -139,7 +174,7 @@ function MyTriggers_CountForAoe(settings)
         
         for i = 1, 40 do
             local unit = "nameplate" .. i
-            if UnitExists(unit) and not UnitIsFriend("player", unit) then
+            if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
                 local inRange = true
                 if settings.inRangeOfAoeSpell ~= "" then
                     inRange = IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1

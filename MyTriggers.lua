@@ -57,8 +57,10 @@ MyTriggers_InRangeOfAoeSpells = {
 
     -- Demon Hunter
     ["12/1"] = "Chaos Strike",
-    ["12/2"] = "",
+    ["12/2"] = "Chaos Strike",
 }
+
+MyTriggers_Last3Spells = { };
 
 function MyTriggers_ChatPrint(str)
 	DEFAULT_CHAT_FRAME:AddMessage("[MyTriggers] "..str, 0.25, 1.0, 0.25);
@@ -153,7 +155,7 @@ function MyTriggers_Check(settings)
     MyTriggers_CheckSelection(settings)
 
     settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
-    settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
+    settings.isSingleTargetPriority = (settings.isPriority and not settings.isAoeReached)
 end
 
 function MyTriggers_CheckSelection(settings)
@@ -174,7 +176,8 @@ function MyTriggers_CountForAoe(settings)
         
         for i = 1, 40 do
             local unit = "nameplate" .. i
-            if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
+            if UnitExists(unit) then
+                -- and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
                 local inRange = true
                 if settings.inRangeOfAoeSpell ~= "" then
                     inRange = IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
@@ -189,7 +192,7 @@ function MyTriggers_CountForAoe(settings)
             end
         end
         
-        MyTriggers_DebugPrint("enemy count in range: " .. tostring(counter))
+        -- MyTriggers_ChatPrint("enemy count in range: " .. tostring(counter))
         settings.isAoeReached = counter >= settings.aoeEnemyThreshold
     end
 end
@@ -245,6 +248,7 @@ end
 -- https://wago.io/r1wDoVIw-
 local frame = CreateFrame("FRAME", "MyTriggersAddonFrame");
 frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
+frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED");
 local MyTriggers_Warlock = {
     pguid = UnitGUID("player"),
     dreadstalkerCount = 0,
@@ -254,35 +258,53 @@ local MyTriggers_Warlock = {
     impTime = {}
 }
 
-local function eventHandler(self, e, timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID, ...)
-    local now = GetTime()
+local function eventHandler(self, e, ...)
+    if e == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local now = GetTime()
+        local timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID = ...
 
-    if subEvent == "UNIT_DIED" then
-        for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
-            if destGUID == index then
-                MyTriggers_Warlock.dreadstalkerTime[index] = nil
-                MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1
+        if subEvent == "UNIT_DIED" then
+            for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
+                if destGUID == index then
+                    MyTriggers_Warlock.dreadstalkerTime[index] = nil
+                    MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1
+                end
+            end
+            for index, value in pairs(MyTriggers_Warlock.impTime) do
+                if destGUID == index then
+                    MyTriggers_Warlock.impTime[index] = nil
+                    MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+                end
+            end
+        elseif subEvent == "SPELL_SUMMON" and sourceGUID == MyTriggers_Warlock.pguid then
+            if spellID == 193331 or spellID == 193332 then
+                MyTriggers_Warlock.dreadstalkerTime[destGUID] = now
+                MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount + 1
+            elseif spellID == 196273 or spellID == 196274 or spellID == 104317 or spellID == 196271 then
+                MyTriggers_Warlock.impTime[destGUID] = now
+                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount + 1
+            end
+        elseif subEvent == "SPELL_INSTAKILL" then
+            for index, value in pairs(MyTriggers_Warlock.impTime) do
+                if destGUID == index then
+                    MyTriggers_Warlock.impTime[index] = nil
+                    MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+                end
             end
         end
-        for index, value in pairs(MyTriggers_Warlock.impTime) do
-            if destGUID == index then
-                MyTriggers_Warlock.impTime[index] = nil
-                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
-            end
-        end
-    elseif subEvent == "SPELL_SUMMON" and sourceGUID == MyTriggers_Warlock.pguid then
-        if spellID == 193331 or spellID == 193332 then
-            MyTriggers_Warlock.dreadstalkerTime[destGUID] = now
-            MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount + 1
-        elseif spellID == 196273 or spellID == 196274 or spellID == 104317 or spellID == 196271 then
-            MyTriggers_Warlock.impTime[destGUID] = now
-            MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount + 1
-        end
-    elseif subEvent == "SPELL_INSTAKILL" then
-        for index, value in pairs(MyTriggers_Warlock.impTime) do
-            if destGUID == index then
-                MyTriggers_Warlock.impTime[index] = nil
-                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+    elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unitTarget, castGUID, spellID = ...;
+        if unitTarget == "player" then
+            local spellName = GetSpellInfo(spellID);
+            if spellName then
+                MyTriggers_SetLastSpell(spellName);
+                table.insert(MyTriggers_Last3Spells, spellName);
+                MyTriggers_DebugPrint("add: " .. spellName);
+
+                while MyTriggers_Last3Spells[4] do
+                    MyTriggers_DebugPrint("remove: " .. MyTriggers_Last3Spells[1]);
+                    table.remove(MyTriggers_Last3Spells, 1);
+                end
             end
         end
     end

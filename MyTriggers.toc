@@ -1,7 +1,10 @@
 ## Interface: 90001
 ## Title: MyTriggers
 ## Notes: 
-## Author: Lasse Vågsæther KArlsen
-## Version: 0.10.0
+## Author: Lasse Vågsæther Karlsen
+## Version: 9.0.1.3
 ## DefaultState: Enabled
+## RequiredDeps: LVK, WeakAuras
+MyTriggers_Old.lua
+MyTriggers_RangeSpells.lua
 MyTriggers.lua

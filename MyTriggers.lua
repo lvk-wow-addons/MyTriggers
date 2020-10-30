@@ -1,147 +1,139 @@
-MyTriggers_InRangeOfAoeSpells = {
-    -- Warrior
-    ["1/1"] = "",
-    ["1/2"] = "",
-    ["1/3"] = "",
+MT = { };
+MT.__weakAuraVisible = {};
+MT.__lastSpell = ""
+MT.__priMode = 2
+MT.__Last3Spells = {};
+MT.__cachedSettings = {};
 
-    -- Paladin
-    ["2/1"] = "",
-    ["2/2"] = "",
-    ["2/3"] = "",
-
-    -- Hunter
-    ["3/1"] = "",
-    ["3/2"] = "",
-    ["3/3"] = "",
-
-    -- Rogue
-    ["4/1"] = "",
-    ["4/2"] = "",
-    ["4/3"] = "",
-
-    -- Priest
-    ["5/1"] = "",
-    ["5/2"] = "",
-    ["5/3"] = "Mind Flay",
-
-    -- Death Knight
-    ["6/1"] = "",
-    ["6/2"] = "",
-    ["6/3"] = "",
-
-    -- Shaman
-    ["7/1"] = "",
-    ["7/2"] = "",
-    ["7/3"] = "",
-
-    -- Mage
-    ["8/1"] = "",
-    ["8/2"] = "Fireball",
-    ["8/3"] = "",
-
-    -- Warlock
-    ["9/1"] = "",
-    ["9/2"] = "",
-    ["9/3"] = "",
-    
-    -- Monk
-    ["10/1"] = "",
-    ["10/2"] = "",
-    ["10/3"] = "",
-
-    -- Druid
-    ["11/1"] = "",
-    ["11/2"] = "",
-    ["11/3"] = "",
-    ["11/4"] = "",
-
-    -- Demon Hunter
-    ["12/1"] = "Chaos Strike",
-    ["12/2"] = "Chaos Strike",
-}
-
-MyTriggers_Last3Spells = { };
-
-function MyTriggers_ChatPrint(str)
-	DEFAULT_CHAT_FRAME:AddMessage("[MyTriggers] "..str, 0.25, 1.0, 0.25);
-end
-
-function MyTriggers_ErrorPrint(str)
-	DEFAULT_CHAT_FRAME:AddMessage("[MyTriggers] "..str, 1.0, 0.5, 0.5);
-end
-
-function MyTriggers_DebugPrint(str)
-	-- DEFAULT_CHAT_FRAME:AddMessage("[MyTriggers] "..str, 0.75, 1.0, 0.25);
-end
-
-function MyTriggers_DefaultSettings()
+function MT:DefaultSettings()
     local settings = { }
     
-    settings.lastRefresh = nil
+    MT:InitializeSettings(settings)
+
+    settings.Check = function()
+        if not settings.inRangeOfAoeSpell then
+            settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
+        end
+
+        MT:CheckPriorityTarget(settings)
+        MT:CountForAoe(settings)
+        MT:CheckSelection(settings)
+    
+        settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
+        settings.isSingleTargetPriority = (settings.isPriority and not settings.isAoeReached)
+    
+        return settings
+    end
+
+    return settings
+end
+
+function MT:ApplyDefaults(settings)
     settings.refreshRate = 0.1
-
-    settings.aoeEnemyThreshold = 5
-    settings.priWorldBoss = true
-    settings.priElite = true
     settings.bossHealth = UnitHealthMax("player") * 2
-    settings.inRangeOfAoeSpell = MyTriggers_GetInRangeOfAoeSpell()
+    settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
+    settings.aoeEnemyThreshold = 5
+    settings.priElite = true
+    settings.priWorldBoss = true
+end
 
+function MT:InitializeSettings(settings)
+    settings.lastRefresh = nil
     settings.isPriority = false
     settings.isAoePriority = false
     settings.isSingleTargetPriority = false
     settings.isAoeReached = false
 
+    settings.enemyCount = 0
+    settings.dkBloodPlagueCount = 0
+
+    MT:ApplyDefaults(settings)
+end
+
+function MT:Settings(name, initialize)
+    if not name then
+        return MT:DefaultSettings()
+    end
+
+    local settings = MT.__cachedSettings[name]
+    if not settings then
+        settings = MT:DefaultSettings()
+        if initialize then
+            initialize(settings)
+        end
+        MT.__cachedSettings[name] = settings
+    end
     return settings
 end
 
-local priMode = 2
-local lastSpell = ""
+function MT:WA(id, evaluator)
+    if evaluator then
+        local isVisible = evaluator(trigger)
+        -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
+        
+        if MT.__weakAuraVisible[id] ~= isVisible then
+            MT.__weakAuraVisible[id] = isVisible
+            WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY", id, isVisible)
+        end
+        return isVisible
+    end
 
-function MyTriggers_GetLastSpell()
-    return lastSpell
+    return MT.__weakAuraVisible[id] or false
 end
 
-function MyTriggers_SetLastSpell(spell)
-    lastSpell = spell
+function MT:LastSpell(spell)
+    if spell then
+        if MT.__lastSpell ~= spell then
+            MT.__lastSpell = spell
+            WeakAuras.ScanEvents("MT_LASTSPELL", spell)
+        end
+
+        table.insert(MT.__Last3Spells, spellName);
+        if MT.__Last3Spells[4] then
+            table.remove(MT.__Last3Spells, 1);
+        end
+    else
+        return MT.__lastSpell
+    end
 end
 
-function MyTriggers_IsAoeSelected()
-    return priMode == 1
+function MT:IsAoeSelected()
+    return MT.__priMode == 1
 end
 
-function MyTriggers_IsSingleSelected()
-    return priMode == 0
+function MT:IsSingleSelected()
+    return MT.__priMode == 0
 end
 
-function MyTriggers_IsAutoSelection()
-    return priMode == 2
+function MT:IsAutoSelection()
+    return MT.__priMode == 2
 end
 
-function MyTriggers_SetSelection(mode)
-    priMode = mode
+function MT:SetSelection(mode)
+    MT.__priMode = mode
     MyTriggers_ShowMode()
 end
 
-function MyTriggers_ToggleSelection()
-    if priMode < 2 then
-        priMode = priMode + 1
+function MT:ToggleSelection()
+    if MT.__priMode < 2 then
+        MT.__priMode = MT.__priMode + 1
     else
-        priMode = 0
+        MT.__priMode = 0
     end
     MyTriggers_ShowMode()
 end
 
-function MyTriggers_ShowMode()
-    if priMode == 0 then
+function MT:ShowMode()
+    if MT.__priMode == 0 then
         UIErrorsFrame:AddMessage("Single target mode selected", 1, 0, 0, 5)
-    elseif priMode == 1 then
+    elseif MT.__priMode == 1 then
         UIErrorsFrame:AddMessage("AOE mode selected", 1, 0, 0, 5)
     else
         UIErrorsFrame:AddMessage("Automatic single target / aoe mode selected", 1, 0, 0, 5)
     end
 end
 
-function MyTriggers_GetInRangeOfAoeSpell()
+function MT:GetInRangeOfAoeSpell()
     local classDisplayName, class, classID = UnitClass("player");
     local spec = GetSpecialization()
 
@@ -149,16 +141,7 @@ function MyTriggers_GetInRangeOfAoeSpell()
     return MyTriggers_InRangeOfAoeSpells[key]
 end
 
-function MyTriggers_Check(settings)
-    MyTriggers_CheckPriorityTarget(settings)
-    MyTriggers_CountForAoe(settings)
-    MyTriggers_CheckSelection(settings)
-
-    settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
-    settings.isSingleTargetPriority = (settings.isPriority and not settings.isAoeReached)
-end
-
-function MyTriggers_CheckSelection(settings)
+function MT:CheckSelection(settings)
     if priMode == 0 then
         settings.aoeSelected = false
     elseif priMode == 1 then
@@ -168,53 +151,75 @@ function MyTriggers_CheckSelection(settings)
     end
 end
 
-function MyTriggers_CountForAoe(settings)
+function MT:UnitHasAura(unit, aura)
+    for index = 1, 40 do
+        local name = UnitAura(unit, index, "PLAYER|HARMFUL")
+        if name == aura then
+            return true
+        end
+    end
+
+    return false
+end
+
+function MT:CountForAoe(settings)
+    if settings.aoeEnemyThreshold < 0 then
+        settings.enemyCount = -1
+        settings.dkBloodPlagueCount = -1
+        settings.isAoeReached = false
+        return
+    end
+
     if not settings.lastRefresh or settings.lastRefresh < GetTime() - settings.refreshRate then
         settings.lastRefresh = GetTime()
         
         local counter = 0
+
+        local dkBloodPlagueCount = 0
         
         for i = 1, 40 do
             local unit = "nameplate" .. i
-            if UnitExists(unit) then
-                -- and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
+            if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
                 local inRange = true
                 if settings.inRangeOfAoeSpell ~= "" then
                     inRange = IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
                 end
-                
+
+                if MT:UnitHasAura(unit, "Blood Plague") then
+                    dkBloodPlagueCount = dkBloodPlagueCount + 1
+                end
+
                 if inRange then
                     counter = counter + 1
-                    if counter >= settings.aoeEnemyThreshold then
-                        break
-                    end
                 end
             end
         end
         
-        -- MyTriggers_ChatPrint("enemy count in range: " .. tostring(counter))
+        -- LVK:Print("enemy count in range: " .. tostring(counter))
+        settings.enemyCount = counter
+        settings.dkBloodPlagueCount = dkBloodPlagueCount
         settings.isAoeReached = counter >= settings.aoeEnemyThreshold
     end
 end
 
-function MyTriggers_CheckPriorityTarget(settings)
+function MT:CheckPriorityTarget(settings)
     local isBoss = false
 
     if UnitExists("target") and not UnitIsFriend("player", "target") and UnitHealth("target") > 0 then
         local c = UnitClassification("target")
         if c == "worldboss" then
-            MyTriggers_DebugPrint("classification: world boss")
+            LVK:Debug("classification: world boss")
             isBoss = settings.priWorldBoss
         elseif c == "elite" or c == "rareelite" then
-            MyTriggers_DebugPrint("classification: elite")
+            LVK:Debug("classification: elite")
             isBoss = settings.priElite
         else
             local health = UnitHealthMax("target")
             if health >= settings.bossHealth then
-                MyTriggers_DebugPrint("priority due to health: " .. tostring(health))
+                LVK:Debug("priority due to health: " .. tostring(health))
                 isBoss = true
             else
-                MyTriggers_DebugPrint("not priority, classification: " .. c .. ", health: " .. tostring(health))
+                LVK:Debug("not priority, classification: " .. c .. ", health: " .. tostring(health))
             end
         end
     end
@@ -222,27 +227,39 @@ function MyTriggers_CheckPriorityTarget(settings)
     settings.isPriority = isBoss
 end
 
-function MyTriggers_Test()
-    local settings = MyTriggers_DefaultSettings()
+function MT:Test()
+    local spellId = select(7, GetSpellInfo("Shadow Word: Death"))
+    local description = GetSpellDescription(spellId)
+    local match = string.match(description, "inflicts (%d+) Shadow damage", 1)
+    local damage = tonumber(match)
+    LVK:Dump(damage)
+end
 
-    MyTriggers_Check(settings)
-
-    if settings.isAoeReached then
-        MyTriggers_DebugPrint("aoe threshold reached: YES")
-    else
-        MyTriggers_DebugPrint("aoe threshold reached: NO");
+function MT:ShadowWordDeath(aura_env)
+    if (not aura_env.damage) or (UnitLevel("player") > aura_env.damage_level) then
+        local spellId = select(7, GetSpellInfo("Shadow Word: Death"))
+        local description = GetSpellDescription(spellId)
+        local match = string.match(description, "inflicts (%d+) Shadow damage", 1)
+        
+        aura_env.damage_level = UnitLevel("player")
+        aura_env.damage = tonumber(match)
+        -- LVK:Print("Shadow Word: Death, recalculated to deal " .. tostring(aura_env.damage) .. " damage")
     end
-    if settings.isAoePriority then
-        MyTriggers_DebugPrint("aoe priority: YES")
-    else
-        MyTriggers_DebugPrint("aoe priority: NO");
+    
+    local max = UnitHealthMax("target")
+    if max == 0 then
+        return false
     end
-
-    if settings.isSingleTargetPriority then
-        MyTriggers_DebugPrint("single target priority: YES")
-    else
-        MyTriggers_DebugPrint("single target priority: NO");
+    local current = UnitHealth("target")
+    
+    local damage = aura_env.damage
+    
+    local threshold = max * 0.2
+    if current <= threshold then
+        damage = damage * 2.5
     end
+    
+    return damage >= current;
 end
 
 -- https://wago.io/r1wDoVIw-
@@ -297,21 +314,14 @@ local function eventHandler(self, e, ...)
         if unitTarget == "player" then
             local spellName = GetSpellInfo(spellID);
             if spellName then
-                MyTriggers_SetLastSpell(spellName);
-                table.insert(MyTriggers_Last3Spells, spellName);
-                MyTriggers_DebugPrint("add: " .. spellName);
-
-                while MyTriggers_Last3Spells[4] do
-                    MyTriggers_DebugPrint("remove: " .. MyTriggers_Last3Spells[1]);
-                    table.remove(MyTriggers_Last3Spells, 1);
-                end
+                MT:LastSpell(spellName);
             end
         end
     end
 end
 frame:SetScript("OnEvent", eventHandler);
 
-function MyTriggers_GetDreadstalkerCount()
+function MT:GetDreadstalkerCount()
     local cutoff = GetTime() - 12
     if MyTriggers_Warlock.dreadstalkerTime ~= nil then      
         for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
@@ -324,7 +334,7 @@ function MyTriggers_GetDreadstalkerCount()
     return MyTriggers_Warlock.dreadstalkerCount or 0
 end
 
-function MyTriggers_GetImpCount()
+function MT:GetImpCount()
     local cutoff = GetTime() - 12
     if MyTriggers_Warlock.impTime ~= nil then      
         for index, value in pairs(MyTriggers_Warlock.impTime) do
@@ -336,3 +346,17 @@ function MyTriggers_GetImpCount()
     end
     return MyTriggers_Warlock.impCount or 0
 end
+
+MT.__cachedSettings["default"] = MT:DefaultSettings()
+MT.__cachedSettings["default"].aoeEnemyThreshold = -1
+
+MT.__cachedSettings["aoe2"] = MT:DefaultSettings()
+MT.__cachedSettings["aoe2"].aoeEnemyThreshold = 2
+
+MT.__cachedSettings["aoe3"] = MT:DefaultSettings()
+MT.__cachedSettings["aoe3"].aoeEnemyThreshold = 3
+
+MT.__cachedSettings["aoe5"] = MT:DefaultSettings()
+MT.__cachedSettings["aoe5"].aoeEnemyThreshold = 5
+
+LVK:AnnounceAddon("MyTriggers")

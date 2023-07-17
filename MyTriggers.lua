@@ -68,7 +68,7 @@ end
 
 function MT:WA(id, evaluator)
     if evaluator then
-        local isVisible = evaluator(trigger)
+        local isVisible = evaluator()
         -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
         
         if MT.__weakAuraVisible[id] ~= isVisible then
@@ -151,9 +151,9 @@ function MT:CheckSelection(settings)
     end
 end
 
-function MT:UnitHasAura(unit, aura)
+function MT:UnitHasAura(unit, aura, filter)
     for index = 1, 40 do
-        local name = UnitAura(unit, index, "PLAYER|HARMFUL")
+        local name = UnitAura(unit, index)
         if name == aura then
             return true
         end
@@ -163,6 +163,7 @@ function MT:UnitHasAura(unit, aura)
 end
 
 function MT:CountForAoe(settings)
+    settings.isCondemnedDemonInRange = false
     if settings.aoeEnemyThreshold < 0 then
         settings.enemyCount = -1
         settings.dkBloodPlagueCount = -1
@@ -183,9 +184,14 @@ function MT:CountForAoe(settings)
                 local inRange = true
                 if settings.inRangeOfAoeSpell ~= "" then
                     inRange = IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
+                    if inRange then
+                        if inRange and MT:UnitHasAura(unit, "Unstoppable Conflict", "") then
+                            settings.isCondemnedDemonInRange = true
+                        end
+                    end
                 end
 
-                if MT:UnitHasAura(unit, "Blood Plague") then
+                if MT:UnitHasAura(unit, "Blood Plague", "PLAYER|HARMFUL") then
                     dkBloodPlagueCount = dkBloodPlagueCount + 1
                 end
 
@@ -228,11 +234,7 @@ function MT:CheckPriorityTarget(settings)
 end
 
 function MT:Test()
-    local spellId = select(7, GetSpellInfo("Shadow Word: Death"))
-    local description = GetSpellDescription(spellId)
-    local match = string.match(description, "inflicts (%d+) Shadow damage", 1)
-    local damage = tonumber(match)
-    LVK:Dump(damage)
+    LVK:Dump(MT:Settings("aoe2").Check())
 end
 
 function MT:ShadowWordDeath(aura_env)

@@ -224,7 +224,7 @@ end
 function MT:UnitHasDebuff(unit, aura, filter)
     for index = 1, 40 do
         local name
-        name = UnitDebuff(unit, index, filter)
+        name = C_TooltipInfo.GetUnitDebuff(unit, index, filter)
 
         if name == aura then
             return true
@@ -272,7 +272,7 @@ function MT:CountForAoe(settings)
             if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
                 local inRange = true
                 if settings.inRangeOfAoeSpell ~= "" then
-                    inRange = IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
+                    inRange = C_Spell.IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
                     if inRange then
                         if inRange and MT:UnitHasAura(unit, "Unstoppable Conflict", "") then
                             settings.isCondemnedDemonInRange = true

@@ -5,12 +5,46 @@ MT.__priMode = 2
 MT.__Last3Spells = {};
 MT.__cachedSettings = {};
 
+MT.__ignoredIds = {
+    target = true,
+    boss1 = true,
+    boss2 = true,
+    boss3 = true,
+    boss4 = true,
+    boss5 = true,
+    boss6 = true,
+    boss7 = true,
+    boss8 = true,
+    nameplate1 = true,
+    nameplate2 = true,
+    nameplate3 = true,
+    nameplate4 = true,
+    nameplate5 = true,
+    nameplate6 = true,
+    nameplate7 = true,
+    nameplate8 = true,
+    nameplate9 = true,
+    nameplate10 = true,
+    nameplate11 = true,
+    nameplate12 = true,
+    nameplate13 = true,
+    nameplate14 = true,
+    nameplate15 = true,
+    nameplate16 = true,
+    nameplate17 = true,
+    nameplate18 = true,
+    nameplate19 = true,
+    nameplate20 = true,
+};
+MT.__ignoredIds["deathknight/blood/eat"] = true
+
 function MT:DefaultSettings()
     local settings = { }
     
     MT:InitializeSettings(settings)
 
     settings.Check = function()
+        settings.bossHealth = UnitHealthMax("player") * 2
         if not settings.inRangeOfAoeSpell then
             settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
         end
@@ -68,6 +102,11 @@ end
 
 function MT:WA(id, evaluator)
     if evaluator then
+        if string.lower(id) == id then
+            if not (MT.__ignoredIds[id] or false) then
+                print("MT:WA(" .. id .. ", evaluator)")
+            end
+        end
         local isVisible = evaluator()
         -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
         
@@ -76,9 +115,27 @@ function MT:WA(id, evaluator)
             WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY", id, isVisible)
         end
         return isVisible
+    else
+        if string.lower(id) == id then
+            if not (MT.__ignoredIds[id] or false) then
+                print("MT:WA(" .. id .. ")")
+            end
+        end
     end
 
     return MT.__weakAuraVisible[id] or false
+end
+
+function MT:UnitIsBoss(unitId)
+    if (unitId == "boss1") or UnitIsUnit(unitId, "boss1") or false then return true end
+    if (unitId == "boss2") or UnitIsUnit(unitId, "boss2") or false then return true end
+    if (unitId == "boss3") or UnitIsUnit(unitId, "boss3") or false then return true end
+    if (unitId == "boss4") or UnitIsUnit(unitId, "boss4") or false then return true end
+    if (unitId == "boss5") or UnitIsUnit(unitId, "boss5") or false then return true end
+    if (unitId == "boss6") or UnitIsUnit(unitId, "boss6") or false then return true end
+    if (unitId == "boss7") or UnitIsUnit(unitId, "boss7") or false then return true end
+    if (unitId == "boss8") or UnitIsUnit(unitId, "boss8") or false then return true end
+    return false
 end
 
 function MT:LastSpell(spell)
@@ -151,9 +208,41 @@ function MT:CheckSelection(settings)
     end
 end
 
+function MT:UnitHasBuff(unit, aura, filter)
+    for index = 1, 40 do
+        local name
+        name = UnitBuff(unit, index, filter)
+
+        if name == aura then
+            return true
+        end
+    end
+
+    return false
+end
+
+function MT:UnitHasDebuff(unit, aura, filter)
+    for index = 1, 40 do
+        local name
+        name = UnitDebuff(unit, index, filter)
+
+        if name == aura then
+            return true
+        end
+    end
+
+    return false
+end
+
 function MT:UnitHasAura(unit, aura, filter)
     for index = 1, 40 do
-        local name = UnitAura(unit, index)
+        local name
+        if filter then
+            name = UnitAura(unit, index, nil, filter)
+        else
+            name = UnitAura(unit, index)
+        end
+
         if name == aura then
             return true
         end
@@ -191,7 +280,7 @@ function MT:CountForAoe(settings)
                     end
                 end
 
-                if MT:UnitHasAura(unit, "Blood Plague", "PLAYER|HARMFUL") then
+                if MT:UnitHasDebuff(unit, "Blood Plague", "PLAYER") then
                     dkBloodPlagueCount = dkBloodPlagueCount + 1
                 end
 
@@ -222,7 +311,7 @@ function MT:CheckPriorityTarget(settings)
         else
             local health = UnitHealthMax("target")
             if health >= settings.bossHealth then
-                LVK:Debug("priority due to health: " .. tostring(health))
+                LVK:Debug("priority due to health: " .. tostring(health) .. " [" .. tostring(settings.bossHealth) .. "]")
                 isBoss = true
             else
                 LVK:Debug("not priority, classification: " .. c .. ", health: " .. tostring(health))
@@ -233,14 +322,24 @@ function MT:CheckPriorityTarget(settings)
     settings.isPriority = isBoss
 end
 
-function MT:Test()
-    LVK:Dump(MT:Settings("aoe2").Check())
+function MT:Test(unit, filter)
+    for index = 1, 40 do
+        local name
+        if filter then
+            name = UnitAura(unit, index, nil, filter)
+        else
+            name = UnitAura(unit, index)
+        end
+        if name then
+            print((filter or "none") .. ": " .. name)
+        end        
+    end
 end
 
 function MT:ShadowWordDeath(aura_env)
     if (not aura_env.damage) or (UnitLevel("player") > aura_env.damage_level) then
-        local spellId = select(7, GetSpellInfo("Shadow Word: Death"))
-        local description = GetSpellDescription(spellId)
+        local spellId = select(7, C_Spell.GetSpellInfo("Shadow Word: Death"))
+        local description = C_Spell.GetSpellDescription(spellId)
         local match = string.match(description, "inflicts (%d+) Shadow damage", 1)
         
         aura_env.damage_level = UnitLevel("player")
@@ -314,7 +413,7 @@ local function eventHandler(self, e, ...)
     elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
         local unitTarget, castGUID, spellID = ...;
         if unitTarget == "player" then
-            local spellName = GetSpellInfo(spellID);
+            local spellName = C_Spell.GetSpellInfo(spellID);
             if spellName then
                 MT:LastSpell(spellName);
             end
@@ -351,6 +450,9 @@ end
 
 MT.__cachedSettings["default"] = MT:DefaultSettings()
 MT.__cachedSettings["default"].aoeEnemyThreshold = -1
+
+MT.__cachedSettings["single"] = MT:DefaultSettings()
+MT.__cachedSettings["single"].aoeEnemyThreshold = -1
 
 MT.__cachedSettings["aoe2"] = MT:DefaultSettings()
 MT.__cachedSettings["aoe2"].aoeEnemyThreshold = 2

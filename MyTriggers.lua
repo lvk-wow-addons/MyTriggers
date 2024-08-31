@@ -5,6 +5,11 @@ MT.__priMode = 2
 MT.__Last3Spells = {};
 MT.__cachedSettings = {};
 
+MT.__classChecks = {
+    ["Death Knight/pre"] = function (settings) MT:PreDeathKnight(settings) end,
+    ["Death Knight"] = function (settings, unit, inRange) MT:CheckDeathKnight(settings, unit, inRange) end
+};
+
 MT.__ignoredIds = {
     target = true,
     boss1 = true,
@@ -52,7 +57,7 @@ function MT:DefaultSettings()
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
         MT:CheckSelection(settings)
-    
+
         settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
         settings.isSingleTargetPriority = (settings.isPriority and not settings.isAoeReached)
     
@@ -72,14 +77,20 @@ function MT:ApplyDefaults(settings)
 end
 
 function MT:InitializeSettings(settings)
-    settings.lastRefresh = nil
+    settings.nextRefresh = GetTime()
     settings.isPriority = false
     settings.isAoePriority = false
     settings.isSingleTargetPriority = false
     settings.isAoeReached = false
+    settings.classCheck = MT.__classChecks[UnitClass("player")]
+    settings.classPreCheck = MT.__classChecks[UnitClass("player") .. "/pre"]
+    settings.classPostCheck = MT.__classChecks[UnitClass("player") .. "/post"]
+
+    if settings.classPreCheck then
+        settings.classPreCheck(settings)
+    end
 
     settings.enemyCount = 0
-    settings.dkBloodPlagueCount = 0
 
     MT:ApplyDefaults(settings)
 end
@@ -102,11 +113,6 @@ end
 
 function MT:WA(id, evaluator)
     if evaluator then
-        if string.lower(id) == id then
-            if not (MT.__ignoredIds[id] or false) then
-                print("MT:WA(" .. id .. ", evaluator)")
-            end
-        end
         local isVisible = evaluator()
         -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
         
@@ -115,12 +121,6 @@ function MT:WA(id, evaluator)
             WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY", id, isVisible)
         end
         return isVisible
-    else
-        if string.lower(id) == id then
-            if not (MT.__ignoredIds[id] or false) then
-                print("MT:WA(" .. id .. ")")
-            end
-        end
     end
 
     return MT.__weakAuraVisible[id] or false
@@ -208,93 +208,83 @@ function MT:CheckSelection(settings)
     end
 end
 
-function MT:UnitHasBuff(unit, aura, filter)
-    for index = 1, 40 do
-        local name
-        name = UnitBuff(unit, index, filter)
-
-        if name == aura then
-            return true
-        end
-    end
-
-    return false
+function MT:PreDeathKnight(settings)
+    settings.dkBloodPlagueCount = 0
+    settings.dkBloodPlagueFirst = 0
 end
 
-function MT:UnitHasDebuff(unit, aura, filter)
-    for index = 1, 40 do
-        local name
-        name = C_TooltipInfo.GetUnitDebuff(unit, index, filter)
-
-        if name == aura then
-            return true
-        end
+function MT:CheckDeathKnight(settings, unit, inRange)
+    if not inRange then
+        return
     end
 
-    return false
-end
-
-function MT:UnitHasAura(unit, aura, filter)
-    for index = 1, 40 do
-        local name
-        if filter then
-            name = UnitAura(unit, index, nil, filter)
-        else
-            name = UnitAura(unit, index)
-        end
-
-        if name == aura then
-            return true
-        end
+    local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Blood Plague","HARMFUL")
+    if not bp then
+        return
+    end
+    if bp.sourceUnit ~= "player" then
+        return
     end
 
-    return false
+    settings.dkBloodPlagueCount = settings.dkBloodPlagueCount + 1
+    local left = bp.expirationTime - GetTime()
+    if settings.dkBloodPlagueCount == 1 then
+        settings.dkBloodPlagueFirst = left
+    elseif left < settings.dkBloodPlagueFirst then
+        settings.dkBloodPlagueFirst = left
+    end
 end
 
 function MT:CountForAoe(settings)
     settings.isCondemnedDemonInRange = false
     if settings.aoeEnemyThreshold < 0 then
         settings.enemyCount = -1
-        settings.dkBloodPlagueCount = -1
         settings.isAoeReached = false
         return
     end
 
-    if not settings.lastRefresh or settings.lastRefresh < GetTime() - settings.refreshRate then
-        settings.lastRefresh = GetTime()
-        
-        local counter = 0
+    local now = GetTime()
+    if now < settings.nextRefresh then
+        return
+    end
 
-        local dkBloodPlagueCount = 0
-        
-        for i = 1, 40 do
-            local unit = "nameplate" .. i
-            if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
-                local inRange = true
-                if settings.inRangeOfAoeSpell ~= "" then
-                    inRange = C_Spell.IsSpellInRange(settings.inRangeOfAoeSpell, unit) == 1
-                    if inRange then
-                        if inRange and MT:UnitHasAura(unit, "Unstoppable Conflict", "") then
-                            settings.isCondemnedDemonInRange = true
-                        end
+    settings.nextRefresh = now + settings.refreshRate
+    local counter = 0
+
+    if settings.classPreCheck then
+        settings.classPreCheck(settings)
+    end
+
+    for i = 1, 40 do
+        local unit = "nameplate" .. i
+        if UnitExists(unit) and not UnitIsFriend("player", unit) then
+            local inRange = true
+            if settings.inRangeOfAoeSpell ~= "" then
+                inRange = C_Spell.IsSpellInRange(settings.inRangeOfAoeSpell, unit)
+                if inRange then
+                    if inRange and C_UnitAuras.GetAuraDataBySpellName(unit, "Unstoppable Conflict", "HARMFUL") then
+                        settings.isCondemnedDemonInRange = true
                     end
                 end
+            end
 
-                if MT:UnitHasDebuff(unit, "Blood Plague", "PLAYER") then
-                    dkBloodPlagueCount = dkBloodPlagueCount + 1
-                end
+            if settings.classCheck then
+                settings.classCheck(settings, unit, inRange)
+            end
 
-                if inRange then
-                    counter = counter + 1
-                end
+            if inRange then
+                counter = counter + 1
             end
         end
-        
-        -- LVK:Print("enemy count in range: " .. tostring(counter))
-        settings.enemyCount = counter
-        settings.dkBloodPlagueCount = dkBloodPlagueCount
-        settings.isAoeReached = counter >= settings.aoeEnemyThreshold
     end
+
+    if settings.classPostCheck then
+        settings.classPostCheck(settings)
+    end
+    
+    -- LVK:Print("enemy count in range: " .. tostring(counter) .. ", bp: " .. tostring(settings.dkBloodPlagueCount))
+    settings.enemyCount = counter
+    settings.isAoeReached = counter >= settings.aoeEnemyThreshold
 end
 
 function MT:CheckPriorityTarget(settings)
@@ -322,18 +312,16 @@ function MT:CheckPriorityTarget(settings)
     settings.isPriority = isBoss
 end
 
-function MT:Test(unit, filter)
-    for index = 1, 40 do
-        local name
-        if filter then
-            name = UnitAura(unit, index, nil, filter)
-        else
-            name = UnitAura(unit, index)
-        end
-        if name then
-            print((filter or "none") .. ": " .. name)
-        end        
-    end
+function MT:Test()
+    local a = { }
+    a.preCheck = function(settings) MT:PreDeathKnight(settings) end
+    LVK:Print("1");
+    local settings = MT:DefaultSettings()
+    LVK:Print("2");
+    a.preCheck(settings)
+    LVK:Print("3");
+    LVK:Dump(settings)
+    settings.Check()
 end
 
 function MT:ShadowWordDeath(aura_env)
@@ -364,63 +352,65 @@ function MT:ShadowWordDeath(aura_env)
 end
 
 -- https://wago.io/r1wDoVIw-
-local frame = CreateFrame("FRAME", "MyTriggersAddonFrame");
-frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
-frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED");
-local MyTriggers_Warlock = {
-    pguid = UnitGUID("player"),
-    dreadstalkerCount = 0,
-    dreadstalkerTime = {},
-
-    impCount = 0,
-    impTime = {}
-}
-
-local function eventHandler(self, e, ...)
-    if e == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local now = GetTime()
-        local timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID = ...
-
-        if subEvent == "UNIT_DIED" then
-            for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
-                if destGUID == index then
-                    MyTriggers_Warlock.dreadstalkerTime[index] = nil
-                    MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1
+if UnitClass("player") == "Warlock" then
+    local frame = CreateFrame("FRAME", "MyTriggersAddonFrame");
+    frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
+    frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED");
+    local MyTriggers_Warlock = {
+        pguid = UnitGUID("player"),
+        dreadstalkerCount = 0,
+        dreadstalkerTime = {},
+    
+        impCount = 0,
+        impTime = {}
+    }
+    
+    local function eventHandler(self, e, ...)
+        if e == "COMBAT_LOG_EVENT_UNFILTERED" then
+            local now = GetTime()
+            local timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID = ...
+    
+            if subEvent == "UNIT_DIED" then
+                for index, value in pairs(MyTriggers_Warlock.dreadstalkerTime) do
+                    if destGUID == index then
+                        MyTriggers_Warlock.dreadstalkerTime[index] = nil
+                        MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount - 1
+                    end
+                end
+                for index, value in pairs(MyTriggers_Warlock.impTime) do
+                    if destGUID == index then
+                        MyTriggers_Warlock.impTime[index] = nil
+                        MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+                    end
+                end
+            elseif subEvent == "SPELL_SUMMON" and sourceGUID == MyTriggers_Warlock.pguid then
+                if spellID == 193331 or spellID == 193332 then
+                    MyTriggers_Warlock.dreadstalkerTime[destGUID] = now
+                    MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount + 1
+                elseif spellID == 196273 or spellID == 196274 or spellID == 104317 or spellID == 196271 then
+                    MyTriggers_Warlock.impTime[destGUID] = now
+                    MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount + 1
+                end
+            elseif subEvent == "SPELL_INSTAKILL" then
+                for index, value in pairs(MyTriggers_Warlock.impTime) do
+                    if destGUID == index then
+                        MyTriggers_Warlock.impTime[index] = nil
+                        MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+                    end
                 end
             end
-            for index, value in pairs(MyTriggers_Warlock.impTime) do
-                if destGUID == index then
-                    MyTriggers_Warlock.impTime[index] = nil
-                    MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
+        elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
+            local unitTarget, castGUID, spellID = ...;
+            if unitTarget == "player" then
+                local spellName = C_Spell.GetSpellInfo(spellID);
+                if spellName then
+                    MT:LastSpell(spellName);
                 end
-            end
-        elseif subEvent == "SPELL_SUMMON" and sourceGUID == MyTriggers_Warlock.pguid then
-            if spellID == 193331 or spellID == 193332 then
-                MyTriggers_Warlock.dreadstalkerTime[destGUID] = now
-                MyTriggers_Warlock.dreadstalkerCount = MyTriggers_Warlock.dreadstalkerCount + 1
-            elseif spellID == 196273 or spellID == 196274 or spellID == 104317 or spellID == 196271 then
-                MyTriggers_Warlock.impTime[destGUID] = now
-                MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount + 1
-            end
-        elseif subEvent == "SPELL_INSTAKILL" then
-            for index, value in pairs(MyTriggers_Warlock.impTime) do
-                if destGUID == index then
-                    MyTriggers_Warlock.impTime[index] = nil
-                    MyTriggers_Warlock.impCount = MyTriggers_Warlock.impCount - 1
-                end
-            end
-        end
-    elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unitTarget, castGUID, spellID = ...;
-        if unitTarget == "player" then
-            local spellName = C_Spell.GetSpellInfo(spellID);
-            if spellName then
-                MT:LastSpell(spellName);
             end
         end
     end
+    frame:SetScript("OnEvent", eventHandler);
 end
-frame:SetScript("OnEvent", eventHandler);
 
 function MT:GetDreadstalkerCount()
     local cutoff = GetTime() - 12

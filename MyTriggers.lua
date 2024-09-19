@@ -1,13 +1,24 @@
-MT = { };
-MT.__weakAuraVisible = {};
-MT.__lastSpell = ""
-MT.__priMode = 2
-MT.__Last3Spells = {};
-MT.__cachedSettings = {};
-
 MT.__classChecks = {
     ["Death Knight/pre"] = function (settings) MT:PreDeathKnight(settings) end,
-    ["Death Knight"] = function (settings, unit, inRange) MT:CheckDeathKnight(settings, unit, inRange) end
+    ["Death Knight"] = function (settings, unit, inRange) MT:CheckDeathKnight(settings, unit, inRange) end,
+
+    ["Paladin/pre"] = function (settings) MT:PrePaladin(settings) end,
+    ["Paladin"] = function (settings, unit, inRange) MT:CheckPaladin(settings, unit, inRange) end,
+
+    ["Mage/init"] = function(settings) MT:InitMage(settings) end,
+    ["Mage/pre"] = function(settings) MT:PreMage(settings) end,
+    ["Mage"] = function(settings, unit, inRange) MT:CheckMage(settings, unit, inRange) end,
+
+    ["Priest/init"] = function(settings) MT:InitPriest(settings) end,
+    ["Priest/pre"] = function(settings) MT:PrePriest(settings) end,
+    ["Priest"] = function(settings, unit, inRange) MT:CheckPriest(settings, unit, inRange) end,
+
+    ["Demon Hunter/pre"] = function (settings) MT:PreDemonHunter(settings) end,
+    ["Demon Hunter"] = function (settings, unit, inRange) MT:CheckDemonHunter(settings, unit, inRange) end,
+
+    ["Shaman/pre"] = function (settings) MT:PreShaman(settings) end,
+    ["Shaman"] = function (settings, unit, inRange) MT:CheckShaman(settings, unit, inRange) end,
+    ["Shaman/cast"] = function(spellName) MT:ShamanCast(spellName) end,
 };
 
 MT.__ignoredIds = {
@@ -54,6 +65,7 @@ function MT:DefaultSettings()
             settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
         end
 
+        settings.lastSpell = MT.__spellName
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
         MT:CheckSelection(settings)
@@ -77,6 +89,7 @@ function MT:ApplyDefaults(settings)
 end
 
 function MT:InitializeSettings(settings)
+    settings.lrc = LibStub("LibRangeCheck-3.0")
     settings.nextRefresh = GetTime()
     settings.isPriority = false
     settings.isAoePriority = false
@@ -85,12 +98,19 @@ function MT:InitializeSettings(settings)
     settings.classCheck = MT.__classChecks[UnitClass("player")]
     settings.classPreCheck = MT.__classChecks[UnitClass("player") .. "/pre"]
     settings.classPostCheck = MT.__classChecks[UnitClass("player") .. "/post"]
+    settings.lastSpell = ""
+
+    local init = MT.__classChecks[UnitClass("player") .. "/init"]
+    if init then
+        init(settings)
+    end
 
     if settings.classPreCheck then
         settings.classPreCheck(settings)
     end
 
     settings.enemyCount = 0
+    settings.meleeCount = 0
 
     MT:ApplyDefaults(settings)
 end
@@ -118,7 +138,7 @@ function MT:WA(id, evaluator)
         
         if MT.__weakAuraVisible[id] ~= isVisible then
             MT.__weakAuraVisible[id] = isVisible
-            WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY", id, isVisible)
+            WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY")
         end
         return isVisible
     end
@@ -208,33 +228,6 @@ function MT:CheckSelection(settings)
     end
 end
 
-function MT:PreDeathKnight(settings)
-    settings.dkBloodPlagueCount = 0
-    settings.dkBloodPlagueFirst = 0
-end
-
-function MT:CheckDeathKnight(settings, unit, inRange)
-    if not inRange then
-        return
-    end
-
-    local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Blood Plague","HARMFUL")
-    if not bp then
-        return
-    end
-    if bp.sourceUnit ~= "player" then
-        return
-    end
-
-    settings.dkBloodPlagueCount = settings.dkBloodPlagueCount + 1
-    local left = bp.expirationTime - GetTime()
-    if settings.dkBloodPlagueCount == 1 then
-        settings.dkBloodPlagueFirst = left
-    elseif left < settings.dkBloodPlagueFirst then
-        settings.dkBloodPlagueFirst = left
-    end
-end
-
 function MT:CountForAoe(settings)
     settings.isCondemnedDemonInRange = false
     if settings.aoeEnemyThreshold < 0 then
@@ -250,11 +243,13 @@ function MT:CountForAoe(settings)
 
     settings.nextRefresh = now + settings.refreshRate
     local counter = 0
+    local meleeCounter = 0
 
     if settings.classPreCheck then
         settings.classPreCheck(settings)
     end
 
+    local isMeleeRange = settings.lrc:GetHarmMaxChecker(2)
     for i = 1, 40 do
         local unit = "nameplate" .. i
         if UnitExists(unit) and not UnitIsFriend("player", unit) then
@@ -268,9 +263,15 @@ function MT:CountForAoe(settings)
                 end
             end
 
+            if isMeleeRange(unit) then
+                meleeCounter = meleeCounter + 1
+            end
+
             if settings.classCheck then
                 settings.classCheck(settings, unit, inRange)
             end
+
+
 
             if inRange then
                 counter = counter + 1
@@ -284,6 +285,7 @@ function MT:CountForAoe(settings)
     
     -- LVK:Print("enemy count in range: " .. tostring(counter) .. ", bp: " .. tostring(settings.dkBloodPlagueCount))
     settings.enemyCount = counter
+    settings.meleeCount = meleeCounter
     settings.isAoeReached = counter >= settings.aoeEnemyThreshold
 end
 
@@ -437,6 +439,27 @@ function MT:GetImpCount()
     end
     return MyTriggers_Warlock.impCount or 0
 end
+
+local frame = CreateFrame("FRAME", "MyTriggersAddonFrame")
+frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+
+frame:SetScript("OnEvent", function(self, e, ...)
+    if e == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unitTarget, castGUID, spellID = ...
+        if unitTarget == "player" then
+            local spellName = C_Spell.GetSpellName(spellID)
+            MT.lastSpell = spellName
+
+            if MT.castCheck then
+                MT.castCheck(spellName)
+            end
+            
+            WeakAuras.ScanEvents("MT_WEAKAURA_SPELLCAST")
+        end
+    end
+end)
+
+MT.castCheck = MT.__classChecks[UnitClass("player") .. "/cast"]
 
 MT.__cachedSettings["default"] = MT:DefaultSettings()
 MT.__cachedSettings["default"].aoeEnemyThreshold = -1

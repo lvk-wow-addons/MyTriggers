@@ -8,7 +8,7 @@ MyTriggers_InRangeOfAoeSpells = {
     -- Paladin
     ["2/1"] = "",
     ["2/2"] = "",
-    ["2/3"] = "",
+    ["2/3"] = "Judgment",
 
     -- Hunter
     ["3/1"] = "",
@@ -31,7 +31,7 @@ MyTriggers_InRangeOfAoeSpells = {
     ["6/3"] = "",
 
     -- Shaman
-    ["7/1"] = "",
+    ["7/1"] = "Lightning Bolt",
     ["7/2"] = "",
     ["7/3"] = "",
 
@@ -58,5 +58,5 @@ MyTriggers_InRangeOfAoeSpells = {
 
     -- Demon Hunter
     ["12/1"] = "Chaos Strike",
-    ["12/2"] = "Chaos Strike",
+    ["12/2"] = "Fracture",
 }

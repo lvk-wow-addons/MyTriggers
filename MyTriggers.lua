@@ -157,16 +157,19 @@ function MT:Settings(name, initialize)
     return settings
 end
 
-function MT:WA(id, evaluator)
-    if evaluator then
-        local isVisible = evaluator()
+function MT:WA(id, value)
+    if value then
+        if type(value) == "function" then
+            LVK:Debug("|r|OBSOLETE|<| %s", id)
+            value = value()
+        end
         -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
         
-        if MT.__weakAuraVisible[id] ~= isVisible then
-            MT.__weakAuraVisible[id] = isVisible
+        if MT.__weakAuraVisible[id] ~= value then
+            MT.__weakAuraVisible[id] = value
             WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY")
         end
-        return isVisible
+        return value
     end
 
     return MT.__weakAuraVisible[id] or false

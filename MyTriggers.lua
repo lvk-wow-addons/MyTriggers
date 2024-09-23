@@ -65,7 +65,7 @@ function MT:DefaultSettings()
             settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
         end
 
-        settings.lastSpell = MT.__spellName
+        settings.lastSpell = MT.lastSpell
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
         MT:CheckSelection(settings)
@@ -76,6 +76,32 @@ function MT:DefaultSettings()
         return settings
     end
 
+    return settings
+end
+
+function MT:InitializeCache()
+    MT.__cachedSettings["default"] = MT:DefaultSettings()
+    MT.__cachedSettings["single"] = MT.__cachedSettings["default"]
+    MT.__cachedSettings["default"].aoeEnemyThreshold = -1
+
+    for i = 2, 10 do
+        local settings = MT:DefaultSettings()
+        settings.aoeEnemyThreshold = i
+        MT.__cachedSettings["aoe" .. tostring(i)] = settings
+    end
+end
+
+function MT:AoeSettings(aoeEnemyThreshold)
+    if (aoeNecessary <= 1) then
+        return MT.__cachedSettings["single"]
+    end
+
+    if aoeNecessary <= 10 then
+        return MT.__cachedSettings["aoe" .. tostring(aoeNecessary)]
+    end
+
+    local settings = MT:DefaultSettings()
+    settings.aoeEnemyThreshold = aoeEnemyThreshold
     return settings
 end
 
@@ -160,9 +186,9 @@ end
 
 function MT:LastSpell(spell)
     if spell then
-        if MT.__lastSpell ~= spell then
-            MT.__lastSpell = spell
-            WeakAuras.ScanEvents("MT_LASTSPELL", spell)
+        if MT.lastSpell ~= spell then
+            MT.lastSpell = spell
+            WeakAuras.ScanEvents("MT_WEAKAURA_SPELLCAST", spell)
         end
 
         table.insert(MT.__Last3Spells, spellName);
@@ -170,10 +196,11 @@ function MT:LastSpell(spell)
             table.remove(MT.__Last3Spells, 1);
         end
     else
-        return MT.__lastSpell
+        return MT.lastSpell
     end
 end
 
+--[[
 function MT:IsAoeSelected()
     return MT.__priMode == 1
 end
@@ -209,6 +236,7 @@ function MT:ShowMode()
         UIErrorsFrame:AddMessage("Automatic single target / aoe mode selected", 1, 0, 0, 5)
     end
 end
+]]
 
 function MT:GetInRangeOfAoeSpell()
     local classDisplayName, class, classID = UnitClass("player");
@@ -353,6 +381,7 @@ function MT:ShadowWordDeath(aura_env)
     return damage >= current;
 end
 
+--[[
 -- https://wago.io/r1wDoVIw-
 if UnitClass("player") == "Warlock" then
     local frame = CreateFrame("FRAME", "MyTriggersAddonFrame");
@@ -439,41 +468,65 @@ function MT:GetImpCount()
     end
     return MyTriggers_Warlock.impCount or 0
 end
+--]]
+
+function MT:StartCombat()
+    LVK:Debug("|y|MyTriggers|<|: Starting combat")
+    if not MT.__timer then
+        local counter2 = 0
+        local counter3 = 0
+        local counter4 = 0
+
+        -- Timer function, runs 12 times a second
+        MT.__timer = C_Timer.NewTicker(0.25, function()
+            WeakAuras.ScanEvents("MT_PERIODIC_4")
+
+            counter2 = 1 - counter2
+            if counter2 == 0 then
+                WeakAuras.ScanEvents("MT_PERIODIC_2")
+            end
+
+            counter4 = (counter4 + 1) % 4
+            if counter4 == 0 then
+                WeakAuras.ScanEvents("MT_PERIODIC_1")
+            end
+        end)
+    end
+end
+
+function MT:EndCombat()
+    LVK:Debug("|y|MyTriggers|<|: Ending combat")
+    if MT.__timer then
+        MT.__timer:Cancel()
+        MT.__timer = nil
+    end
+end
 
 local frame = CreateFrame("FRAME", "MyTriggersAddonFrame")
 frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("PLAYER_ENTER_COMBAT")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+frame:RegisterEvent("PLAYER_LEAVE_COMBAT")
 
 frame:SetScript("OnEvent", function(self, e, ...)
-    if e == "UNIT_SPELLCAST_SUCCEEDED" then
+    if e == "PLAYER_REGEN_DISABLED" or e == "PLAYER_ENTER_COMBAT" then
+        MT:StartCombat()
+    elseif e == "PLAYER_REGEN_ENABLED" or e == "PLAYER_LEAVE_COMBAT" then
+        MT:EndCombat()
+    elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
         local unitTarget, castGUID, spellID = ...
         if unitTarget == "player" then
             local spellName = C_Spell.GetSpellName(spellID)
-            MT.lastSpell = spellName
+            MT:LastSpell(spellName)
 
             if MT.castCheck then
                 MT.castCheck(spellName)
             end
-            
-            WeakAuras.ScanEvents("MT_WEAKAURA_SPELLCAST")
         end
     end
 end)
 
 MT.castCheck = MT.__classChecks[UnitClass("player") .. "/cast"]
-
-MT.__cachedSettings["default"] = MT:DefaultSettings()
-MT.__cachedSettings["default"].aoeEnemyThreshold = -1
-
-MT.__cachedSettings["single"] = MT:DefaultSettings()
-MT.__cachedSettings["single"].aoeEnemyThreshold = -1
-
-MT.__cachedSettings["aoe2"] = MT:DefaultSettings()
-MT.__cachedSettings["aoe2"].aoeEnemyThreshold = 2
-
-MT.__cachedSettings["aoe3"] = MT:DefaultSettings()
-MT.__cachedSettings["aoe3"].aoeEnemyThreshold = 3
-
-MT.__cachedSettings["aoe5"] = MT:DefaultSettings()
-MT.__cachedSettings["aoe5"].aoeEnemyThreshold = 5
-
+MT:InitializeCache()
 LVK:AnnounceAddon("MyTriggers")

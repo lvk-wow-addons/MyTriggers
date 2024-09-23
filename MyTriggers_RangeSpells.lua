@@ -46,9 +46,9 @@ MyTriggers_InRangeOfAoeSpells = {
     ["9/3"] = "",
     
     -- Monk
-    ["10/1"] = "",
-    ["10/2"] = "",
-    ["10/3"] = "",
+    ["10/1"] = "Tiger Palm",
+    ["10/2"] = "Tiger Palm",
+    ["10/3"] = "Tiger Palm",
 
     -- Druid
     ["11/1"] = "",

@@ -68,10 +68,9 @@ function MT:DefaultSettings()
         settings.lastSpell = MT.lastSpell
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
-        MT:CheckSelection(settings)
 
-        settings.isAoePriority = settings.aoeSelected or settings.isPriority or settings.isAoeReached
-        settings.isSingleTargetPriority = (settings.isPriority and not settings.isAoeReached)
+        settings.isAoePriority = settings.isPriority or settings.isAoeReached
+        settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
     
         return settings
     end
@@ -92,12 +91,12 @@ function MT:InitializeCache()
 end
 
 function MT:AoeSettings(aoeEnemyThreshold)
-    if (aoeNecessary <= 1) then
+    if (aoeEnemyThreshold <= 1) then
         return MT.__cachedSettings["single"]
     end
 
-    if aoeNecessary <= 10 then
-        return MT.__cachedSettings["aoe" .. tostring(aoeNecessary)]
+    if aoeEnemyThreshold <= 10 then
+        return MT.__cachedSettings["aoe" .. tostring(aoeEnemyThreshold)]
     end
 
     local settings = MT:DefaultSettings()
@@ -105,18 +104,12 @@ function MT:AoeSettings(aoeEnemyThreshold)
     return settings
 end
 
-function MT:ApplyDefaults(settings)
-    settings.refreshRate = 0.1
-    settings.bossHealth = UnitHealthMax("player") * 2
-    settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
-    settings.aoeEnemyThreshold = 5
-    settings.priElite = true
-    settings.priWorldBoss = true
-end
-
 function MT:InitializeSettings(settings)
     settings.lrc = LibStub("LibRangeCheck-3.0")
+
     settings.nextRefresh = GetTime()
+    settings.refreshRate = 0.1
+
     settings.isPriority = false
     settings.isAoePriority = false
     settings.isSingleTargetPriority = false
@@ -126,6 +119,15 @@ function MT:InitializeSettings(settings)
     settings.classPostCheck = MT.__classChecks[UnitClass("player") .. "/post"]
     settings.lastSpell = ""
 
+    settings.enemyCount = 0
+    settings.meleeCount = 0
+
+    settings.bossHealth = UnitHealthMax("player") * 2
+    settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
+    settings.aoeEnemyThreshold = 5
+    settings.priElite = true
+    settings.priWorldBoss = true
+
     local init = MT.__classChecks[UnitClass("player") .. "/init"]
     if init then
         init(settings)
@@ -134,11 +136,6 @@ function MT:InitializeSettings(settings)
     if settings.classPreCheck then
         settings.classPreCheck(settings)
     end
-
-    settings.enemyCount = 0
-    settings.meleeCount = 0
-
-    MT:ApplyDefaults(settings)
 end
 
 function MT:Settings(name, initialize)
@@ -203,60 +200,12 @@ function MT:LastSpell(spell)
     end
 end
 
---[[
-function MT:IsAoeSelected()
-    return MT.__priMode == 1
-end
-
-function MT:IsSingleSelected()
-    return MT.__priMode == 0
-end
-
-function MT:IsAutoSelection()
-    return MT.__priMode == 2
-end
-
-function MT:SetSelection(mode)
-    MT.__priMode = mode
-    MyTriggers_ShowMode()
-end
-
-function MT:ToggleSelection()
-    if MT.__priMode < 2 then
-        MT.__priMode = MT.__priMode + 1
-    else
-        MT.__priMode = 0
-    end
-    MyTriggers_ShowMode()
-end
-
-function MT:ShowMode()
-    if MT.__priMode == 0 then
-        UIErrorsFrame:AddMessage("Single target mode selected", 1, 0, 0, 5)
-    elseif MT.__priMode == 1 then
-        UIErrorsFrame:AddMessage("AOE mode selected", 1, 0, 0, 5)
-    else
-        UIErrorsFrame:AddMessage("Automatic single target / aoe mode selected", 1, 0, 0, 5)
-    end
-end
-]]
-
 function MT:GetInRangeOfAoeSpell()
     local classDisplayName, class, classID = UnitClass("player");
     local spec = GetSpecialization()
 
     local key = tostring(classID) .. "/" .. tostring(spec)
     return MyTriggers_InRangeOfAoeSpells[key]
-end
-
-function MT:CheckSelection(settings)
-    if priMode == 0 then
-        settings.aoeSelected = false
-    elseif priMode == 1 then
-        settings.aoeSelected = true
-    else
-        settings.aoeSelected = settings.isAoeReached
-    end
 end
 
 function MT:CountForAoe(settings)

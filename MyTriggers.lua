@@ -71,7 +71,7 @@ function MT:DefaultSettings()
 
         settings.isAoePriority = settings.isPriority or settings.isAoeReached
         settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
-    
+
         return settings
     end
 
@@ -81,6 +81,7 @@ end
 function MT:InitializeCache()
     MT.__cachedSettings["default"] = MT:DefaultSettings()
     MT.__cachedSettings["single"] = MT.__cachedSettings["default"]
+    MT.__cachedSettings["aoe1"] = MT.__cachedSettings["default"]
     MT.__cachedSettings["default"].aoeEnemyThreshold = -1
 
     for i = 2, 10 do
@@ -146,6 +147,11 @@ function MT:Settings(name, initialize)
     local settings = MT.__cachedSettings[name]
     if not settings then
         settings = MT:DefaultSettings()
+
+        local aoeThresholdStr = string.match(name, "aoe(%d+)")
+        if aoeThresholdStr then
+            settings.aoeEnemyThreshold = tonumber(aoeThresholdStr)
+        end
         if initialize then
             initialize(settings)
         end
@@ -154,22 +160,19 @@ function MT:Settings(name, initialize)
     return settings
 end
 
-function MT:WA(id, value)
-    if value then
-        if type(value) == "function" then
-            LVK:Debug("|r|OBSOLETE|<| %s", id)
-            value = value()
-        end
-        -- LVK:Debug("WA[" .. id .. "] = " .. (isVisible and "true" or "false"))
-        
+function MT:WA(id, evaluator)
+    if evaluator then
+        local value = evaluator() or false
+
         if MT.__weakAuraVisible[id] ~= value then
             MT.__weakAuraVisible[id] = value
             WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY")
         end
-        return value
-    end
 
-    return MT.__weakAuraVisible[id] or false
+        return value
+    else
+        return MT.__weakAuraVisible[id] or false
+    end
 end
 
 function MT:UnitIsBoss(unitId)
@@ -424,26 +427,8 @@ end
 
 function MT:StartCombat()
     LVK:Debug("|y|MyTriggers|<|: Starting combat")
-    if not MT.__timer then
-        local counter2 = 0
-        local counter3 = 0
-        local counter4 = 0
-
-        -- Timer function, runs 12 times a second
-        MT.__timer = C_Timer.NewTicker(0.25, function()
-            WeakAuras.ScanEvents("MT_PERIODIC_4")
-
-            counter2 = 1 - counter2
-            if counter2 == 0 then
-                WeakAuras.ScanEvents("MT_PERIODIC_2")
-            end
-
-            counter4 = (counter4 + 1) % 4
-            if counter4 == 0 then
-                WeakAuras.ScanEvents("MT_PERIODIC_1")
-            end
-        end)
-    end
+    WeakAuras.ScanEvents("MT_ROLE_CHECK")
+    WeakAuras.ScanEvents("MT_COMBAT_START")
 end
 
 function MT:EndCombat()
@@ -451,6 +436,7 @@ function MT:EndCombat()
     if MT.__timer then
         MT.__timer:Cancel()
         MT.__timer = nil
+        WeakAuras.ScanEvents("MT_COMBAT_END")
     end
 end
 
@@ -460,12 +446,35 @@ frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("PLAYER_ENTER_COMBAT")
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("PLAYER_LEAVE_COMBAT")
+frame:RegisterEvent("UNIT_COMBAT")
+
+frame:RegisterEvent("PARTY_MEMBER_ENABLE")
+frame:RegisterEvent("PARTY_MEMBER_DISABLE")
+frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+frame:RegisterEvent("PARTY_LEADER_CHANGED")
+frame:RegisterEvent("ROLE_CHANGED_INFORM")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("GROUP_JOINED")
+
+frame:RegisterEvent("ADDON_LOADED")
 
 frame:SetScript("OnEvent", function(self, e, ...)
+    if e == "ADDON_LOADED" then
+        frame:UnregisterEvent("ADDON_LOADED")
+        C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
+    elseif e == "PARTY_MEMBER_ENABLED" or e == "PARTY_MEMBER_DISABLE" or e == "PLAYER_ROLES_ASSIGNED" or e == "PARTY_LEADER_CHANGED" or e == "ROLE_CHANGED_INFORM" or e == "GROUP_ROSTER_UPDATE" or e == "GROUP_JOINED" then
+        WeakAuras.ScanEvents("MT_ROLE_CHECK")
+    end
     if e == "PLAYER_REGEN_DISABLED" or e == "PLAYER_ENTER_COMBAT" then
+        WeakAuras.ScanEvents("MT_ROLE_CHECK")
         MT:StartCombat()
     elseif e == "PLAYER_REGEN_ENABLED" or e == "PLAYER_LEAVE_COMBAT" then
+        WeakAuras.ScanEvents("MT_ROLE_CHECK")
         MT:EndCombat()
+    elseif e == "UNIT_COMBAT" then
+        if UnitAffectingCombat("player") or UnitAffectingCombat("party1") or UnitAffectingCombat("party2") or UnitAffectingCombat("party3") or UnitAffectingCombat("party4") then
+            MT:StartCombat()
+        end
     elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
         local unitTarget, castGUID, spellID = ...
         if unitTarget == "player" then
@@ -479,6 +488,57 @@ frame:SetScript("OnEvent", function(self, e, ...)
     end
 end)
 
+function MT:StartPeriodic()
+    local counter2 = 0
+    local counter4 = 0
+
+    -- Timer function, runs 4 times a second
+    MT.__timer = C_Timer.NewTicker(0.25, function()
+        WeakAuras.ScanEvents("MT_PERIODIC_4")
+
+        counter2 = 1 - counter2
+        if counter2 == 0 then
+            WeakAuras.ScanEvents("MT_PERIODIC_2")
+        end
+
+        counter4 = (counter4 + 1) % 4
+        if counter4 == 0 then
+            WeakAuras.ScanEvents("MT_PERIODIC_1")
+        end
+    end)
+end
+
+function MT:Delay(event, delay)
+    local timer = { }
+    timer.elapsed = false
+
+    timer.StartIfStopped = function()
+        if not timer.timer then
+            timer.elapsed = false
+            timer.timer = C_Timer.NewTimer(delay, function()
+                timer.elapsed = true
+                timer.timer:Cancel()
+
+                WeakAuras.ScanEvents(event)
+            end)
+
+            WeakAuras.ScanEvents(event)
+        end
+    end
+
+    timer.Stop = function()
+        if timer.timer then
+            timer.timer:Cancel()
+            timer.timer = nil
+        end
+        timer.elapsed = false
+        WeakAuras.ScanEvents(event)
+    end
+
+    return timer
+end
+
 MT.castCheck = MT.__classChecks[UnitClass("player") .. "/cast"]
 MT:InitializeCache()
+MT:StartPeriodic()
 LVK:AnnounceAddon("MyTriggers")

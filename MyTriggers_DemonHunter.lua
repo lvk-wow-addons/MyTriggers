@@ -1,6 +1,8 @@
 function MT:PreDemonHunter(settings)
     settings.dhSigilOfFlame = 0
     settings.dhSigilOfFlameFirst = 100
+    settings.dhCastingInterruptible = 0
+    settings.dhCastingInterruptibleOther = 0
 end
 
 function MT:CheckDemonHunter(settings, unit, inRange)
@@ -14,6 +16,14 @@ function MT:CheckDemonHunter(settings, unit, inRange)
     end
     if bp.sourceUnit ~= "player" then
         return
+    end
+
+    local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellId = UnitCastingInfo(unit)
+    if name and (not notInterruptible) then
+        settings.dhCastingInterruptible = settings.dhCastingInterruptible + 1
+        if not UnitIsUnit("target", unit) then
+            settings.dhCastingInterruptibleOther = settings.dhCastingInterruptibleOther + 1
+        end
     end
 
     settings.dhSigilOfFlame = settings.dhSigilOfFlame + 1

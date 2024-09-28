@@ -254,8 +254,6 @@ function MT:CountForAoe(settings)
                 settings.classCheck(settings, unit, inRange)
             end
 
-
-
             if inRange then
                 counter = counter + 1
             end
@@ -460,8 +458,11 @@ frame:RegisterEvent("ADDON_LOADED")
 
 frame:SetScript("OnEvent", function(self, e, ...)
     if e == "ADDON_LOADED" then
-        frame:UnregisterEvent("ADDON_LOADED")
-        C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
+        if select(1, ...) == "MyTriggers" then        
+            frame:UnregisterEvent("ADDON_LOADED")
+            C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
+            MT:StartPeriodic()
+        end
     elseif e == "PARTY_MEMBER_ENABLED" or e == "PARTY_MEMBER_DISABLE" or e == "PLAYER_ROLES_ASSIGNED" or e == "PARTY_LEADER_CHANGED" or e == "ROLE_CHANGED_INFORM" or e == "GROUP_ROSTER_UPDATE" or e == "GROUP_JOINED" then
         WeakAuras.ScanEvents("MT_ROLE_CHECK")
     end
@@ -540,5 +541,4 @@ end
 
 MT.castCheck = MT.__classChecks[UnitClass("player") .. "/cast"]
 MT:InitializeCache()
-MT:StartPeriodic()
 LVK:AnnounceAddon("MyTriggers")

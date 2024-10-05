@@ -438,56 +438,56 @@ function MT:EndCombat()
     end
 end
 
-local frame = CreateFrame("FRAME", "MyTriggersAddonFrame")
-frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-frame:RegisterEvent("PLAYER_REGEN_ENABLED")
-frame:RegisterEvent("PLAYER_ENTER_COMBAT")
-frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-frame:RegisterEvent("PLAYER_LEAVE_COMBAT")
-frame:RegisterEvent("UNIT_COMBAT")
+-- local frame = CreateFrame("FRAME", "MyTriggersAddonFrame")
+-- frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+-- frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- frame:RegisterEvent("PLAYER_ENTER_COMBAT")
+-- frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+-- frame:RegisterEvent("PLAYER_LEAVE_COMBAT")
+-- frame:RegisterEvent("UNIT_COMBAT")
 
-frame:RegisterEvent("PARTY_MEMBER_ENABLE")
-frame:RegisterEvent("PARTY_MEMBER_DISABLE")
-frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
-frame:RegisterEvent("PARTY_LEADER_CHANGED")
-frame:RegisterEvent("ROLE_CHANGED_INFORM")
-frame:RegisterEvent("GROUP_ROSTER_UPDATE")
-frame:RegisterEvent("GROUP_JOINED")
+-- frame:RegisterEvent("PARTY_MEMBER_ENABLE")
+-- frame:RegisterEvent("PARTY_MEMBER_DISABLE")
+-- frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+-- frame:RegisterEvent("PARTY_LEADER_CHANGED")
+-- frame:RegisterEvent("ROLE_CHANGED_INFORM")
+-- frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+-- frame:RegisterEvent("GROUP_JOINED")
 
-frame:RegisterEvent("ADDON_LOADED")
+-- frame:RegisterEvent("ADDON_LOADED")
 
-frame:SetScript("OnEvent", function(self, e, ...)
-    if e == "ADDON_LOADED" then
-        if select(1, ...) == "MyTriggers" then        
-            frame:UnregisterEvent("ADDON_LOADED")
-            C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
-            MT:StartPeriodic()
-        end
-    elseif e == "PARTY_MEMBER_ENABLED" or e == "PARTY_MEMBER_DISABLE" or e == "PLAYER_ROLES_ASSIGNED" or e == "PARTY_LEADER_CHANGED" or e == "ROLE_CHANGED_INFORM" or e == "GROUP_ROSTER_UPDATE" or e == "GROUP_JOINED" then
-        WeakAuras.ScanEvents("MT_ROLE_CHECK")
-    end
-    if e == "PLAYER_REGEN_DISABLED" or e == "PLAYER_ENTER_COMBAT" then
-        WeakAuras.ScanEvents("MT_ROLE_CHECK")
-        MT:StartCombat()
-    elseif e == "PLAYER_REGEN_ENABLED" or e == "PLAYER_LEAVE_COMBAT" then
-        WeakAuras.ScanEvents("MT_ROLE_CHECK")
-        MT:EndCombat()
-    elseif e == "UNIT_COMBAT" then
-        if UnitAffectingCombat("player") or UnitAffectingCombat("party1") or UnitAffectingCombat("party2") or UnitAffectingCombat("party3") or UnitAffectingCombat("party4") then
-            MT:StartCombat()
-        end
-    elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unitTarget, castGUID, spellID = ...
-        if unitTarget == "player" then
-            local spellName = C_Spell.GetSpellName(spellID)
-            MT:LastSpell(spellName)
+-- frame:SetScript("OnEvent", function(self, e, ...)
+--     if e == "ADDON_LOADED" then
+--         -- if select(1, ...) == "MyTriggers" then        
+--         --     frame:UnregisterEvent("ADDON_LOADED")
+--         --     C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
+--         --     MT:StartPeriodic()
+--         -- end
+--     elseif e == "PARTY_MEMBER_ENABLED" or e == "PARTY_MEMBER_DISABLE" or e == "PLAYER_ROLES_ASSIGNED" or e == "PARTY_LEADER_CHANGED" or e == "ROLE_CHANGED_INFORM" or e == "GROUP_ROSTER_UPDATE" or e == "GROUP_JOINED" then
+--         -- WeakAuras.ScanEvents("MT_ROLE_CHECK")
+--     end
+--     if e == "PLAYER_REGEN_DISABLED" or e == "PLAYER_ENTER_COMBAT" then
+--         -- WeakAuras.ScanEvents("MT_ROLE_CHECK")
+--         -- MT:StartCombat()
+--     elseif e == "PLAYER_REGEN_ENABLED" or e == "PLAYER_LEAVE_COMBAT" then
+--         -- WeakAuras.ScanEvents("MT_ROLE_CHECK")
+--         -- MT:EndCombat()
+--     elseif e == "UNIT_COMBAT" then
+--         if UnitAffectingCombat("player") or UnitAffectingCombat("party1") or UnitAffectingCombat("party2") or UnitAffectingCombat("party3") or UnitAffectingCombat("party4") then
+--             MT:StartCombat()
+--         end
+--     elseif e == "UNIT_SPELLCAST_SUCCEEDED" then
+--         -- local unitTarget, castGUID, spellID = ...
+--         -- if unitTarget == "player" then
+--         --     local spellName = C_Spell.GetSpellName(spellID)
+--         --     MT:LastSpell(spellName)
 
-            if MT.castCheck then
-                MT.castCheck(spellName)
-            end
-        end
-    end
-end)
+--         --     if MT.castCheck then
+--         --         MT.castCheck(spellName)
+--         --     end
+--         -- end
+--     end
+-- end)
 
 function MT:StartPeriodic()
     local counter2 = 0
@@ -539,6 +539,46 @@ function MT:Delay(event, delay)
     return timer
 end
 
+local eventHandler = LVK:EventHandler()
+eventHandler.RegisterEvent("ADDON_LOADED", function(addon, ...)
+    if addon == "MyTriggers" then
+        eventHandler.UnregisterEvent("ADDON_LOADED")
+        C_Timer.After(5, function() WeakAuras.ScanEvents("MT_ROLE_CHECK") end)
+        MT:StartPeriodic()
+        LVK:AnnounceAddon("MyTriggers")
+    end
+end)
+
+eventHandler.RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(unitTarget, castGUID, spellID, ...)
+    if unitTarget == "player" then
+        local spellName = C_Spell.GetSpellName(spellID)
+        MT:LastSpell(spellName)
+
+        if MT.castCheck then
+            MT.castCheck(spellName)
+        end
+    end
+end)
+
+eventHandler.RegisterEvent({ "PARTY_MEMBER_ENABLE", "PARTY_MEMBER_DISABLE", "PLAYER_ROLES_ASSIGNED", "PARTY_LEADER_CHANGED", "ROLE_CHANGED_INFORM", "GROUP_ROSTER_UPDATE", "GROUP_JOINED" }, function(...)
+    WeakAuras.ScanEvents("MT_ROLE_CHECK")
+end)
+
+eventHandler.RegisterEvent({ "PLAYER_REGEN_DISABLED", "PLAYER_ENTER_COMBAT" }, function(...)
+    WeakAuras.ScanEvents("MT_ROLE_CHECK")
+    MT:StartCombat()
+end)
+
+eventHandler.RegisterEvent({ "PLAYER_REGEN_ENABLED", "PLAYER_LEAVE_COMBAT" }, function(...)
+    WeakAuras.ScanEvents("MT_ROLE_CHECK")
+    MT:EndCombat()
+end)
+
+eventHandler.RegisterEvent("UNIT_COMBAT", function(unitTarget, ...)
+    if unitTarget == "player" or unitTarget == "party1" or unitTarget == "party2" or unitTarget == "party3" or unitTarget == "party4" then
+        MT:StartCombat()
+    end
+end)
+
 MT.castCheck = MT.__classChecks[UnitClass("player") .. "/cast"]
 MT:InitializeCache()
-LVK:AnnounceAddon("MyTriggers")

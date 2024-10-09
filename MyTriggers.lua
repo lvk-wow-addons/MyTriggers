@@ -19,8 +19,12 @@ MT.__classChecks = {
     ["Shaman/pre"] = function (settings) MT:PreShaman(settings) end,
     ["Shaman"] = function (settings, unit, inRange) MT:CheckShaman(settings, unit, inRange) end,
     ["Shaman/cast"] = function(spellName) MT:ShamanCast(spellName) end,
+
+    ["Rogue/pre"] = function (settings) MT:PreRogue(settings) end,
+    ["Rogue"] = function (settings, unit, inRange) MT:CheckRogue(settings, unit, inRange) end,
 };
 
+MT.rogueUniqueSpells = {}
 MT.__ignoredIds = {
     target = true,
     boss1 = true,
@@ -66,6 +70,9 @@ function MT:DefaultSettings()
         end
 
         settings.lastSpell = MT.lastSpell
+        settings.castingInterruptible = 0
+        settings.castingInterruptibleOther = 0
+
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
 
@@ -198,6 +205,8 @@ function MT:LastSpell(spell)
         if MT.__Last3Spells[4] then
             table.remove(MT.__Last3Spells, 1);
         end
+
+        LVK:Debug("|y|Player cast|<|: |g|%s|<|", spell)
     else
         return MT.lastSpell
     end
@@ -237,6 +246,15 @@ function MT:CountForAoe(settings)
         local unit = "nameplate" .. i
         if UnitExists(unit) and not UnitIsFriend("player", unit) then
             local inRange = true
+
+            local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellId = UnitCastingInfo(unit)
+            if name and (not notInterruptible) then
+                settings.castingInterruptible = settings.castingInterruptible + 1
+                if not UnitIsUnit("target", unit) then
+                    settings.castingInterruptibleOther = settings.castingInterruptibleOther + 1
+                end
+            end
+        
             if settings.inRangeOfAoeSpell ~= "" then
                 inRange = C_Spell.IsSpellInRange(settings.inRangeOfAoeSpell, unit)
                 if inRange then
@@ -276,18 +294,13 @@ function MT:CheckPriorityTarget(settings)
     if UnitExists("target") and not UnitIsFriend("player", "target") and UnitHealth("target") > 0 then
         local c = UnitClassification("target")
         if c == "worldboss" then
-            LVK:Debug("classification: world boss")
             isBoss = settings.priWorldBoss
         elseif c == "elite" or c == "rareelite" then
-            LVK:Debug("classification: elite")
             isBoss = settings.priElite
         else
             local health = UnitHealthMax("target")
             if health >= settings.bossHealth then
-                LVK:Debug("priority due to health: " .. tostring(health) .. " [" .. tostring(settings.bossHealth) .. "]")
                 isBoss = true
-            else
-                LVK:Debug("not priority, classification: " .. c .. ", health: " .. tostring(health))
             end
         end
     end
@@ -424,13 +437,11 @@ end
 --]]
 
 function MT:StartCombat()
-    LVK:Debug("|y|MyTriggers|<|: Starting combat")
     WeakAuras.ScanEvents("MT_ROLE_CHECK")
     WeakAuras.ScanEvents("MT_COMBAT_START")
 end
 
 function MT:EndCombat()
-    LVK:Debug("|y|MyTriggers|<|: Ending combat")
     if MT.__timer then
         MT.__timer:Cancel()
         MT.__timer = nil

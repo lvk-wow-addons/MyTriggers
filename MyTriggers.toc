@@ -15,5 +15,6 @@ MyTriggers_Priest.lua
 MyTriggers_DeathKnight.lua
 MyTriggers_DemonHunter.lua
 MyTriggers_Shaman.lua
+MyTriggers_Rogue.lua
 
 MyTriggers.lua

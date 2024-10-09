@@ -10,20 +10,15 @@ function MT:CheckDemonHunter(settings, unit, inRange)
         return
     end
 
+    settings.dhCastingInterruptible = settings.castingInterruptible
+    settings.dhCastingInterruptibleOther = settings.castingInterruptibleOther
+
     local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Sigil of Flame","HARMFUL")
     if not bp then
         return
     end
     if bp.sourceUnit ~= "player" then
         return
-    end
-
-    local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellId = UnitCastingInfo(unit)
-    if name and (not notInterruptible) then
-        settings.dhCastingInterruptible = settings.dhCastingInterruptible + 1
-        if not UnitIsUnit("target", unit) then
-            settings.dhCastingInterruptibleOther = settings.dhCastingInterruptibleOther + 1
-        end
     end
 
     settings.dhSigilOfFlame = settings.dhSigilOfFlame + 1

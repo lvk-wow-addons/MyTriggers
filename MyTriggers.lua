@@ -22,6 +22,12 @@ MT.__classChecks = {
 
     ["Rogue/pre"] = function (settings) MT:PreRogue(settings) end,
     ["Rogue"] = function (settings, unit, inRange) MT:CheckRogue(settings, unit, inRange) end,
+
+    ["Warlock/pre"] = function (settings) MT:PreWarlock(settings) end,
+    ["Warlock"] = function (settings, unit, inRange) MT:CheckWarlock(settings, unit, inRange) end,
+
+    ["Warrior/pre"] = function (settings) MT:PreWarrior(settings) end,
+    ["Warrior"] = function (settings, unit, inRange) MT:CheckWarrior(settings, unit, inRange) end,
 };
 
 MT.rogueUniqueSpells = {}
@@ -76,9 +82,6 @@ function MT:DefaultSettings()
         MT:CheckPriorityTarget(settings)
         MT:CountForAoe(settings)
 
-        settings.isAoePriority = settings.isPriority or settings.isAoeReached
-        settings.isSingleTargetPriority = settings.isPriority and not settings.isAoeReached
-
         return settings
     end
 
@@ -86,42 +89,20 @@ function MT:DefaultSettings()
 end
 
 function MT:InitializeCache()
-    MT.__cachedSettings["default"] = MT:DefaultSettings()
-    MT.__cachedSettings["single"] = MT.__cachedSettings["default"]
-    MT.__cachedSettings["aoe1"] = MT.__cachedSettings["default"]
-    MT.__cachedSettings["default"].aoeEnemyThreshold = -1
-
-    for i = 2, 10 do
-        local settings = MT:DefaultSettings()
-        settings.aoeEnemyThreshold = i
-        MT.__cachedSettings["aoe" .. tostring(i)] = settings
-    end
+    MT.__cachedSettings["aoe"] = MT:DefaultSettings()
 end
 
-function MT:AoeSettings(aoeEnemyThreshold)
-    if (aoeEnemyThreshold <= 1) then
-        return MT.__cachedSettings["single"]
-    end
-
-    if aoeEnemyThreshold <= 10 then
-        return MT.__cachedSettings["aoe" .. tostring(aoeEnemyThreshold)]
-    end
-
-    local settings = MT:DefaultSettings()
-    settings.aoeEnemyThreshold = aoeEnemyThreshold
-    return settings
+function MT:Check()
+    return MT.__cachedSettings["aoe"].Check()
 end
 
 function MT:InitializeSettings(settings)
-    settings.lrc = LibStub("LibRangeCheck-3.0")
+    settings.lrc = nil
 
     settings.nextRefresh = GetTime()
     settings.refreshRate = 0.1
 
     settings.isPriority = false
-    settings.isAoePriority = false
-    settings.isSingleTargetPriority = false
-    settings.isAoeReached = false
     settings.classCheck = MT.__classChecks[UnitClass("player")]
     settings.classPreCheck = MT.__classChecks[UnitClass("player") .. "/pre"]
     settings.classPostCheck = MT.__classChecks[UnitClass("player") .. "/post"]
@@ -132,7 +113,6 @@ function MT:InitializeSettings(settings)
 
     settings.bossHealth = UnitHealthMax("player") * 2
     settings.inRangeOfAoeSpell = MT:GetInRangeOfAoeSpell()
-    settings.aoeEnemyThreshold = 5
     settings.priElite = true
     settings.priWorldBoss = true
 
@@ -146,40 +126,68 @@ function MT:InitializeSettings(settings)
     end
 end
 
-function MT:Settings(name, initialize)
-    if not name then
-        return MT:DefaultSettings()
-    end
-
-    local settings = MT.__cachedSettings[name]
-    if not settings then
-        settings = MT:DefaultSettings()
-
-        local aoeThresholdStr = string.match(name, "aoe(%d+)")
-        if aoeThresholdStr then
-            settings.aoeEnemyThreshold = tonumber(aoeThresholdStr)
-        end
-        if initialize then
-            initialize(settings)
-        end
-        MT.__cachedSettings[name] = settings
-    end
-    return settings
+function MT:OnShow(id, isQueue)
+    MT:OnUpdate(id, true, isQueue)
 end
 
-function MT:WA(id, evaluator)
-    if evaluator then
-        local value = evaluator() or false
+function MT:OnHide(id, isQueue)
+    MT:OnUpdate(id, false, isQueue)
+end
 
-        if MT.__weakAuraVisible[id] ~= value then
-            MT.__weakAuraVisible[id] = value
-            WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY")
-        end
-
-        return value
-    else
-        return MT.__weakAuraVisible[id] or false
+function MT:OnUpdate(id, isVisible, isQueue)
+    if MT.__weakAuraStack[id] then
+        LVK:Error("MT:OnShow/OnHide(%s, ...) triggers itself", id)
+        return
     end
+
+    if MT.__weakAuraVisible[id] == isVisible then
+        return
+    end
+
+    MT.__weakAuraStack[id] = true
+    MT.__weakAuraVisible[id] = isVisible
+
+    if isQueue then
+        if isVisible then
+            MT.__queueIconsVisible[id] = true
+        else
+            MT.__queueIconsVisible[id] = nil
+        end
+    end
+
+    WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY", id)
+    MT.__weakAuraStack[id] = nil
+end
+
+function MT:WA(id)
+    if type(id) == "table" then
+        for i,k in pairs(id) do
+            if MT.__weakAuraVisible[k] then
+                return true
+            end
+        end
+        return false
+    end
+    return MT.__weakAuraVisible[id] or false
+end
+
+function MT:IsQueueVisible()
+    return next(MT.__queueIconsVisible) ~= nil
+end
+
+function MT:RefreshWA()
+    C_Timer.After(2, function()
+        if not WeakAuras.IsOptionsOpen() then
+            WeakAuras.ScanEvents("MT_WEAKAURA_VISIBILITY")
+            WeakAuras.ScanEvents("PLAYER_ENTERING_WORLD")
+            WeakAuras.ScanEvents("PLAYER_ROLES_ASSIGNED")
+            WeakAuras.ScanEvents("ZONE_CHANGED_NEW_AREA")
+            WeakAuras.ScanEvents("ZONE_CHANGED")
+            WeakAuras.ScanEvents("ZONE_CHANGED_INDOORS")
+            WeakAuras.ScanEvents("MT_ROLE_CHECK")
+            WeakAuras.ScanEvents("PARTY_LEADER_CHANGED")
+        end
+    end)
 end
 
 function MT:UnitIsBoss(unitId)
@@ -222,11 +230,6 @@ end
 
 function MT:CountForAoe(settings)
     settings.isCondemnedDemonInRange = false
-    if settings.aoeEnemyThreshold < 0 then
-        settings.enemyCount = -1
-        settings.isAoeReached = false
-        return
-    end
 
     local now = GetTime()
     if now < settings.nextRefresh then
@@ -241,7 +244,13 @@ function MT:CountForAoe(settings)
         settings.classPreCheck(settings)
     end
 
+    settings.lrc = settings.lrc or LibStub("LibRangeCheck-3.0")
+
     local isMeleeRange = settings.lrc:GetHarmMaxChecker(2)
+    if not isMeleeRange then
+        settings.lrc = settings.lrc or LibStub("LibRangeCheck-3.0")
+        isMeleeRange = settings.lrc:GetHarmMaxChecker(2)
+    end
     for i = 1, 40 do
         local unit = "nameplate" .. i
         if UnitExists(unit) and not UnitIsFriend("player", unit) then
@@ -264,7 +273,7 @@ function MT:CountForAoe(settings)
                 end
             end
 
-            if isMeleeRange(unit) then
+            if isMeleeRange and isMeleeRange(unit) then
                 meleeCounter = meleeCounter + 1
             end
 
@@ -285,27 +294,36 @@ function MT:CountForAoe(settings)
     -- LVK:Print("enemy count in range: " .. tostring(counter) .. ", bp: " .. tostring(settings.dkBloodPlagueCount))
     settings.enemyCount = counter
     settings.meleeCount = meleeCounter
-    settings.isAoeReached = counter >= settings.aoeEnemyThreshold
 end
 
 function MT:CheckPriorityTarget(settings)
+    local isPriority = false
     local isBoss = false
 
     if UnitExists("target") and not UnitIsFriend("player", "target") and UnitHealth("target") > 0 then
         local c = UnitClassification("target")
         if c == "worldboss" then
-            isBoss = settings.priWorldBoss
+            isPriority = settings.priWorldBoss
         elseif c == "elite" or c == "rareelite" then
-            isBoss = settings.priElite
+            isPriority = settings.priElite
         else
             local health = UnitHealthMax("target")
             if health >= settings.bossHealth then
+                isPriority = true
+            end
+        end
+
+        for k = 1, 8 do
+            local key = "boss" .. k
+            if UnitExists(key) and UnitIsUnit("target", key) then
                 isBoss = true
+                break
             end
         end
     end
 
-    settings.isPriority = isBoss
+    settings.isBoss = isBoss
+    settings.isPriority = isPriority
 end
 
 function MT:Test()
@@ -551,6 +569,18 @@ function MT:Delay(event, delay)
 end
 
 local eventHandler = LVK:EventHandler()
+eventHandler.RegisterEvent("COMPANION_UPDATE", function(...)
+    C_Timer.After(0.1, function() WeakAuras.ScanEvents("COMPANION_UPDATE") end)
+end)
+
+eventHandler.RegisterEvent("PLAYER_ENTERING_WORLD", function(...)
+    C_Timer.After(1, function() WeakAuras.ScanEvents("COMPANION_UPDATE") end)
+end)
+
+eventHandler.RegisterEvent("PET_BAR_UPDATE", function(...)
+    C_Timer.After(1, function() WeakAuras.ScanEvents("COMPANION_UPDATE") end)
+end)
+
 eventHandler.RegisterEvent("ADDON_LOADED", function(addon, ...)
     if addon == "MyTriggers" then
         eventHandler.UnregisterEvent("ADDON_LOADED")

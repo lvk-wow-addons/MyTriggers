@@ -1,5 +1,4 @@
 function MT:InitMage(settings)
-    settings.mageArcaneExplosionCheck = settings.lrc:GetHarmMaxChecker(10)
 end
 
 function MT:PreMage(settings)
@@ -7,6 +6,7 @@ function MT:PreMage(settings)
 end
 
 function MT:CheckMage(settings, unit, inRange)
+    settings.mageArcaneExplosionCheck = settings.mageArcaneExplosionCheck or settings.lrc:GetHarmMaxChecker(10)
     if not inRange then
         return
     end

@@ -1,8 +1,8 @@
 MyTriggers_InRangeOfAoeSpells = {
     -- Warrior
-    ["1/1"] = "",
-    ["1/2"] = "",
-    ["1/3"] = "",
+    ["1/1"] = "Slam",
+    ["1/2"] = "Slam",
+    ["1/3"] = "Slam",
     ["1/5"] = "Slam",
 
     -- Paladin
@@ -41,9 +41,9 @@ MyTriggers_InRangeOfAoeSpells = {
     ["8/3"] = "Frostbolt",
 
     -- Warlock
-    ["9/1"] = "",
-    ["9/2"] = "",
-    ["9/3"] = "",
+    ["9/1"] = "Drain Life",
+    ["9/2"] = "Drain Life",
+    ["9/3"] = "Drain Life",
     
     -- Monk
     ["10/1"] = "Tiger Palm",

@@ -1,8 +1,8 @@
-## Interface: 100207,110000,110002
+## Interface: 110100
 ## Title: MyTriggers
 ## Notes: Additional triggers and helper functions for WeakAuras
 ## Author: Lasse Vågsæther Karlsen
-## Version: 11.0.2
+## Version: 11.1.0
 ## DefaultState: Enabled
 ## RequiredDeps: LVK, WeakAuras, LibRangeCheck-3.0
 MyTriggers_Init.lua
@@ -16,5 +16,7 @@ MyTriggers_DeathKnight.lua
 MyTriggers_DemonHunter.lua
 MyTriggers_Shaman.lua
 MyTriggers_Rogue.lua
+MyTriggers_Warlock.lua
+MyTriggers_Warrior.lua
 
 MyTriggers.lua

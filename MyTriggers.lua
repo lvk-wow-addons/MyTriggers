@@ -253,7 +253,7 @@ function MT:CountForAoe(settings)
     end
     for i = 1, 40 do
         local unit = "nameplate" .. i
-        if UnitExists(unit) and not UnitIsFriend("player", unit) then
+        if UnitExists(unit) and UnitAffectingCombat(unit) and not UnitIsFriend("player", unit) then
             local inRange = true
 
             local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellId = UnitCastingInfo(unit)

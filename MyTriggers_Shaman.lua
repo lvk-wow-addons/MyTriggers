@@ -1,6 +1,7 @@
 function MT:PreShaman(settings)
     settings.shaFlameShock = 0
     settings.shaFlameShockFirst = 100
+    settings.shaStaticCharge = 0
 end
 
 function MT:CheckShaman(settings, unit, inRange)
@@ -8,20 +9,20 @@ function MT:CheckShaman(settings, unit, inRange)
         return
     end
 
-    local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Flame Shock","HARMFUL")
-    if not bp then
-        return
-    end
-    if bp.sourceUnit ~= "player" then
-        return
+    local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Static Charge", "HARMFUL")
+    if bp then
+        settings.shaStaticCharge = settings.shaStaticCharge + 1
     end
 
-    settings.shaFlameShock = settings.shaFlameShock + 1
-    local left = bp.expirationTime - GetTime()
-    if settings.shaFlameShock == 1 then
-        settings.shaFlameShockFirst = left
-    elseif left < settings.shaFlameShockFirst then
-        settings.shaFlameShockFirst = left
+    local bp = C_UnitAuras.GetAuraDataBySpellName(unit, "Flame Shock","HARMFUL")
+    if bp and bp.sourceUnit == "player" then
+        settings.shaFlameShock = settings.shaFlameShock + 1
+        local left = bp.expirationTime - GetTime()
+        if settings.shaFlameShock == 1 then
+            settings.shaFlameShockFirst = left
+        elseif left < settings.shaFlameShockFirst then
+            settings.shaFlameShockFirst = left
+        end
     end
 end
 

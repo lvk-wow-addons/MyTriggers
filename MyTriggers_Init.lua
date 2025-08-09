@@ -6,3 +6,5 @@ MT.__priMode = 2
 MT.__Last3Spells = {}
 MT.__cachedSettings = {}
 MT.__queueIconsVisible = {}
+MT.__castbarsVisible = {}
+MT.__castbars = 0
